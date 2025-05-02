@@ -215,6 +215,31 @@ services:
     command: uv run -m ticktick_mcp.cli run --transport sse --host 0.0.0.0 --port 3434
 ```
 
+### Using the GitHub Container Registry Image
+
+The Docker image is automatically built and published to GitHub Container Registry. You can use the pre-built image instead of building it yourself:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/egv/ticktick-mcp:latest
+
+# Run with SSE transport
+docker run -p 3434:3434 -v $(pwd)/.env:/app/.env ghcr.io/egv/ticktick-mcp:latest
+```
+
+Or in your docker-compose.yml:
+
+```yaml
+services:
+  ticktick-mcp:
+    image: ghcr.io/egv/ticktick-mcp:latest
+    ports:
+      - "3434:3434"
+    volumes:
+      - ./.env:/app/.env
+    restart: unless-stopped
+```
+
 ## Available MCP Tools
 | Tool | Description | Parameters |
 |------|-------------|-------------|
