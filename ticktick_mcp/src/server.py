@@ -110,21 +110,32 @@ def initialize_client():
     try:
         # First, check if environment variables are directly available
         access_token = os.getenv("TICKTICK_ACCESS_TOKEN")
+        
+        # Log available environment variables for debugging
+        logger.info(f"Environment setup: TICKTICK_ACCESS_TOKEN exists: {access_token is not None}")
+        
+        # For token refresh, these are optional but useful
         refresh_token = os.getenv("TICKTICK_REFRESH_TOKEN")
         client_id = os.getenv("TICKTICK_CLIENT_ID")
         client_secret = os.getenv("TICKTICK_CLIENT_SECRET")
         
-        # If all required environment variables are present, use in-memory mode
+        # Use in-memory mode if access token is provided via environment
         in_memory_mode = False
-        if access_token and refresh_token and client_id and client_secret:
-            logger.info("Using OAuth tokens from environment variables")
+        if access_token:
+            logger.info("Using OAuth access token from environment variables")
             in_memory_mode = True
+            
+            # Log additional token info if available
+            if refresh_token:
+                logger.info("Refresh token is also available")
+            if client_id and client_secret:
+                logger.info("Client credentials are available for token refresh")
         else:
             # Check if .env file exists with access token
             from pathlib import Path
             env_path = Path('.env')
             if not env_path.exists():
-                logger.error("No .env file found and no environment variables set. Please run 'uv run -m ticktick_mcp.cli auth' to set up authentication.")
+                logger.error("No .env file found and TICKTICK_ACCESS_TOKEN environment variable is not set. Please run 'uv run -m ticktick_mcp.cli auth' to set up authentication.")
                 return False
             
             # Check if we have valid credentials in .env
@@ -133,6 +144,8 @@ def initialize_client():
                 if 'TICKTICK_ACCESS_TOKEN' not in content:
                     logger.error("No access token found in .env file or environment. Please run 'uv run -m ticktick_mcp.cli auth' to authenticate.")
                     return False
+                
+            logger.info("Using OAuth access token from .env file")
         
         # Initialize the client
         ticktick = TickTickClient(in_memory_only=in_memory_mode)
