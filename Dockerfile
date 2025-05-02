@@ -1,19 +1,16 @@
 FROM python:3.10-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Install uv
-RUN pip install uv
-
-# Copy requirements and install dependencies
 COPY requirements.txt .
-RUN uv pip install -r requirements.txt
+RUN uv pip install -r requirements.txt --system
 
 # Copy the application
 COPY . .
 
 # Install the package in development mode
-RUN uv pip install -e .
+RUN uv pip install -e . --system
 
 # Expose the default SSE port
 EXPOSE 3434
