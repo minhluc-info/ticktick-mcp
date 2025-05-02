@@ -12,15 +12,6 @@ import subprocess
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
 
-# Check if SSE transport is available
-try:
-    # The mcp library will handle imports for SSE internally
-    # We just need to check if the transport is available
-    from mcp.server.transport import has_sse_transport
-    SSE_AVAILABLE = has_sse_transport()
-except (ImportError, AttributeError) as e:
-    print(f"SSE transport not available: {e}")
-    SSE_AVAILABLE = False
 
 from .ticktick_client import TickTickClient
 
@@ -1358,12 +1349,6 @@ def main(transport='stdio', host='127.0.0.1', port=3434):
     # Run the server with the specified transport
     if transport == 'sse':
         logger.info(f"Starting TickTick MCP server with SSE transport on {host}:{port}")
-        
-        # Check if SSE transport is available
-        if not SSE_AVAILABLE:
-            logger.error("SSE transport not available in the mcp library. Please check your mcp installation.")
-            logger.error("The mcp library should provide the SSE transport functionality.")
-            return
         
         # Run with SSE transport
         mcp.run(transport='sse')
