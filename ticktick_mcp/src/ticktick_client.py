@@ -15,12 +15,19 @@ class TickTickClient:
     Client for the TickTick API using OAuth2 authentication.
     """
     
-    def __init__(self):
+    def __init__(self, in_memory_only=False):
+        """
+        Initialize the TickTick client.
+        
+        Args:
+            in_memory_only: If True, don't save tokens to .env file (useful for containers)
+        """
         load_dotenv()
         self.client_id = os.getenv("TICKTICK_CLIENT_ID")
         self.client_secret = os.getenv("TICKTICK_CLIENT_SECRET")
         self.access_token = os.getenv("TICKTICK_ACCESS_TOKEN")
         self.refresh_token = os.getenv("TICKTICK_REFRESH_TOKEN")
+        self.in_memory_only = in_memory_only
         
         if not self.access_token:
             raise ValueError("TICKTICK_ACCESS_TOKEN environment variable is not set. "
@@ -92,11 +99,16 @@ class TickTickClient:
     
     def _save_tokens_to_env(self, tokens: Dict[str, str]) -> None:
         """
-        Save the tokens to the .env file.
+        Save the tokens to the .env file or keep them in memory only.
         
         Args:
             tokens: A dictionary containing the access_token and optionally refresh_token
         """
+        # If in-memory only mode is enabled, don't save to .env file
+        if self.in_memory_only:
+            logger.debug("In-memory only mode: tokens not saved to .env file")
+            return
+            
         # Load existing .env file content
         env_path = Path('.env')
         env_content = {}

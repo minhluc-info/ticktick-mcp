@@ -141,7 +141,10 @@ You can run the TickTick MCP server inside a Docker container using the SSE tran
    ```
 
 4. **Authentication in Docker**:
-   You'll need to run the authentication process outside of Docker first to create the `.env` file, which you can then mount into the container:
+   You have two options for authentication in Docker:
+   
+   **Option 1: Mount .env file from host**
+   Run the authentication process outside of Docker to create the `.env` file, then mount it:
    ```bash
    # On your host machine
    uv run -m ticktick_mcp.cli auth
@@ -149,9 +152,21 @@ You can run the TickTick MCP server inside a Docker container using the SSE tran
    # Then run Docker with the .env file mounted
    docker run -p 3434:3434 -v $(pwd)/.env:/app/.env ticktick-mcp
    ```
+   
+   **Option 2: Pass environment variables directly**
+   Pass the TickTick authentication tokens as environment variables:
+   ```bash
+   docker run -p 3434:3434 \
+     -e TICKTICK_CLIENT_ID=your_client_id \
+     -e TICKTICK_CLIENT_SECRET=your_client_secret \
+     -e TICKTICK_ACCESS_TOKEN=your_access_token \
+     -e TICKTICK_REFRESH_TOKEN=your_refresh_token \
+     ghcr.io/egv/ticktick-mcp:latest
+   ```
 
 ### Docker Compose Example
 
+**Option 1: With mounted .env file**
 ```yaml
 services:
   ticktick-mcp:
@@ -161,6 +176,21 @@ services:
     volumes:
       - ./.env:/app/.env
     command: uv run -m ticktick_mcp.cli run --transport sse --host 0.0.0.0 --port 3434
+```
+
+**Option 2: With environment variables**
+```yaml
+services:
+  ticktick-mcp:
+    image: ghcr.io/egv/ticktick-mcp:latest
+    ports:
+      - "3434:3434"
+    environment:
+      - TICKTICK_CLIENT_ID=your_client_id
+      - TICKTICK_CLIENT_SECRET=your_client_secret
+      - TICKTICK_ACCESS_TOKEN=your_access_token
+      - TICKTICK_REFRESH_TOKEN=your_refresh_token
+    restart: unless-stopped
 ```
 
 ### Using the GitHub Container Registry Image
