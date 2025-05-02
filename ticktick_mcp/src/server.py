@@ -108,16 +108,34 @@ USER_TIMEZONE = get_user_timezone()
 def initialize_client():
     global ticktick
     try:
-        # Check if .env file exists with access token
-        load_dotenv()
+        # First, check if environment variables are directly available
+        access_token = os.getenv("TICKTICK_ACCESS_TOKEN")
+        refresh_token = os.getenv("TICKTICK_REFRESH_TOKEN")
+        client_id = os.getenv("TICKTICK_CLIENT_ID")
+        client_secret = os.getenv("TICKTICK_CLIENT_SECRET")
         
-        # Check if we have valid credentials
-        if os.getenv("TICKTICK_ACCESS_TOKEN") is None:
-            logger.error("No access token found in .env file. Please run 'uv run -m ticktick_mcp.cli auth' to authenticate.")
-            return False
+        # If all required environment variables are present, use in-memory mode
+        in_memory_mode = False
+        if access_token and refresh_token and client_id and client_secret:
+            logger.info("Using OAuth tokens from environment variables")
+            in_memory_mode = True
+        else:
+            # Check if .env file exists with access token
+            from pathlib import Path
+            env_path = Path('.env')
+            if not env_path.exists():
+                logger.error("No .env file found and no environment variables set. Please run 'uv run -m ticktick_mcp.cli auth' to set up authentication.")
+                return False
+            
+            # Check if we have valid credentials in .env
+            with open(env_path, 'r') as f:
+                content = f.read()
+                if 'TICKTICK_ACCESS_TOKEN' not in content:
+                    logger.error("No access token found in .env file or environment. Please run 'uv run -m ticktick_mcp.cli auth' to authenticate.")
+                    return False
         
         # Initialize the client
-        ticktick = TickTickClient()
+        ticktick = TickTickClient(in_memory_only=in_memory_mode)
         logger.info("TickTick client initialized successfully")
         logger.info(f"Using timezone: {USER_TIMEZONE}")
         
@@ -125,7 +143,7 @@ def initialize_client():
         projects = ticktick.get_projects()
         if 'error' in projects:
             logger.error(f"Failed to access TickTick API: {projects['error']}")
-            logger.error("Your access token may have expired. Please run 'uv run -m ticktick_mcp.cli auth' to refresh it.")
+            logger.error("Your access token may have expired. Please run 'uv run -m ticktick_mcp.cli auth' to refresh it or update your environment variables.")
             return False
             
         logger.info(f"Successfully connected to TickTick API with {len(projects)} projects")
