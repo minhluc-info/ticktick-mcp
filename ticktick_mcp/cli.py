@@ -34,8 +34,19 @@ def main():
     run_parser.add_argument(
         "--transport", 
         default="stdio", 
-        choices=["stdio"], 
-        help="Transport type (currently only stdio is supported)"
+        choices=["stdio", "sse"], 
+        help="Transport type (stdio or sse - use sse for Docker environments)"
+    )
+    run_parser.add_argument(
+        "--host",
+        default="0.0.0.0", 
+        help="Host to bind to when using SSE transport (default: 0.0.0.0)"
+    )
+    run_parser.add_argument(
+        "--port",
+        type=int,
+        default=3434, 
+        help="Port to use when using SSE transport (default: 3434)"
     )
     
     # 'auth' command for authentication
@@ -86,7 +97,12 @@ Run 'uv run -m ticktick_mcp.cli auth' to set up authentication later.
         
         # Start the server
         try:
-            server_main()
+            # Pass transport configuration to the server
+            server_main(
+                transport=args.transport,
+                host=args.host,
+                port=args.port
+            )
         except KeyboardInterrupt:
             print("Server stopped by user", file=sys.stderr)
             sys.exit(0)

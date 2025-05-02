@@ -1295,15 +1295,27 @@ async def delete_project(project_id: str) -> str:
         logger.error(f"Error in delete_project: {e}")
         return f"Error deleting project: {str(e)}"
 
-def main():
-    """Main entry point for the MCP server."""
+def main(transport='stdio', host='127.0.0.1', port=3434):
+    """
+    Main entry point for the MCP server.
+    
+    Args:
+        transport: Transport type ('stdio' or 'sse')
+        host: Host to bind to when using SSE transport
+        port: Port to use when using SSE transport
+    """
     # Initialize the TickTick client
     if not initialize_client():
         logger.error("Failed to initialize TickTick client. Please check your API credentials.")
         return
     
-    # Run the server
-    mcp.run(transport='stdio')
+    # Run the server with the specified transport
+    if transport == 'sse':
+        logger.info(f"Starting TickTick MCP server with SSE transport on {host}:{port}")
+        mcp.run(transport='sse', host=host, port=port)
+    else:
+        logger.info("Starting TickTick MCP server with stdio transport")
+        mcp.run(transport='stdio')
 
 if __name__ == "__main__":
     main()
