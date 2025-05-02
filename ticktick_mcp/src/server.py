@@ -8,14 +8,14 @@ from typing import Dict, List, Any, Optional
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
 
-# Transport-specific imports for SSE
+# Check if SSE transport is available
 try:
-    from mcp.server.transport.sse import SseServerTransport
-    from starlette.applications import Starlette
-    from starlette.routing import Route, Mount
-    import uvicorn
-    SSE_AVAILABLE = True
-except ImportError:
+    # The mcp library will handle imports for SSE internally
+    # We just need to check if the transport is available
+    from mcp.server.transport import has_sse_transport
+    SSE_AVAILABLE = has_sse_transport()
+except (ImportError, AttributeError) as e:
+    print(f"SSE transport not available: {e}")
     SSE_AVAILABLE = False
 
 from .ticktick_client import TickTickClient
@@ -483,39 +483,23 @@ def main(transport='stdio', host='127.0.0.1', port=3434):
         logger.error("Failed to initialize TickTick client. Please check your API credentials.")
         return
     
+    # Configure FastMCP server
+    # Set host and port for the SSE transport
+    mcp.settings.host = host
+    mcp.settings.port = port
+    
     # Run the server with the specified transport
     if transport == 'sse':
         logger.info(f"Starting TickTick MCP server with SSE transport on {host}:{port}")
         
-        # Check if SSE dependencies are available
+        # Check if SSE transport is available
         if not SSE_AVAILABLE:
-            logger.error("SSE transport dependencies not available. Please install required packages: starlette, uvicorn")
-            logger.error("Run: uv pip install starlette uvicorn")
+            logger.error("SSE transport not available in the mcp library. Please check your mcp installation.")
+            logger.error("The mcp library should provide the SSE transport functionality.")
             return
         
-        # Create SSE transport
-        sse = SseServerTransport("/messages/")
-        
-        # Define SSE handler
-        async def handle_sse(request):
-            async with sse.connect_sse(
-                request.scope, request.receive, request._send
-            ) as streams:
-                await mcp.run(
-                    streams[0], streams[1], mcp.create_initialization_options()
-                )
-        
-        # Create Starlette app with routes
-        starlette_app = Starlette(
-            debug=True,
-            routes=[
-                Route("/sse", endpoint=handle_sse),
-                Mount("/messages/", app=sse.handle_post_message)
-            ]
-        )
-        
-        # Run with uvicorn
-        uvicorn.run(starlette_app, host=host, port=port)
+        # Run with SSE transport
+        mcp.run(transport='sse')
     else:
         logger.info("Starting TickTick MCP server with stdio transport")
         mcp.run(transport='stdio')
