@@ -114,6 +114,55 @@ The server handles token refresh automatically, so you won't need to reauthentic
 
 Once connected, you'll see the TickTick MCP server tools available in Claude, indicated by the 🔨 (tools) icon.
 
+## Docker Usage
+
+You can run the TickTick MCP server inside a Docker container using the SSE transport option:
+
+1. **Build the Docker image**:
+   ```bash
+   docker build -t ticktick-mcp .
+   ```
+
+2. **Run the container with SSE transport**:
+   ```bash
+   docker run -p 3434:3434 -v $(pwd)/.env:/app/.env ticktick-mcp uv run -m ticktick_mcp.cli run --transport sse --host 0.0.0.0 --port 3434
+   ```
+
+3. **Configure Claude to connect to the containerized server**:
+   Edit your Claude configuration file and add the following:
+   ```json
+   {
+      "mcpServers": {
+         "ticktick": {
+            "url": "http://localhost:3434"
+         }
+      }
+   }
+   ```
+
+4. **Authentication in Docker**:
+   You'll need to run the authentication process outside of Docker first to create the `.env` file, which you can then mount into the container:
+   ```bash
+   # On your host machine
+   uv run -m ticktick_mcp.cli auth
+   
+   # Then run Docker with the .env file mounted
+   docker run -p 3434:3434 -v $(pwd)/.env:/app/.env ticktick-mcp
+   ```
+
+### Docker Compose Example
+
+```yaml
+services:
+  ticktick-mcp:
+    build: .
+    ports:
+      - "3434:3434"
+    volumes:
+      - ./.env:/app/.env
+    command: uv run -m ticktick_mcp.cli run --transport sse --host 0.0.0.0 --port 3434
+```
+
 ## Available MCP Tools
 
 | Tool | Description | Parameters |
