@@ -14,7 +14,11 @@ from .authenticate import main as auth_main
 
 def check_auth_setup() -> bool:
     """Check if authentication is set up properly."""
-    # Check if .env file exists with the required credentials
+    # First check if environment variables are directly set
+    if os.getenv("TICKTICK_ACCESS_TOKEN"):
+        return True
+        
+    # If not, check if .env file exists with the required credentials
     env_path = Path('.env')
     if not env_path.exists():
         return False
