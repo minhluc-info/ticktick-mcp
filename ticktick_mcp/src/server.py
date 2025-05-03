@@ -478,6 +478,7 @@ def main(transport='stdio', host='127.0.0.1', port=3434):
     # Set host and port for the SSE transport
     mcp.settings.host = host
     mcp.settings.port = port
+    mcp.settings.auth = None
     
     # Run the server with the specified transport
     if transport == 'sse':
