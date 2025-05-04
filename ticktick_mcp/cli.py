@@ -101,8 +101,15 @@ Run 'uv run -m ticktick_mcp.cli auth' to set up authentication later.
         log_level = logging.DEBUG if args.debug else logging.INFO
         logging.basicConfig(
             level=log_level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            handlers=[logging.StreamHandler(sys.stdout)]
         )
+        
+        # Set debug level if requested
+        if args.debug:
+            # Configure root logger to debug level
+            logging.getLogger().setLevel(logging.DEBUG)
+            print("Debug logging enabled")
         
         # Start the server
         try:
