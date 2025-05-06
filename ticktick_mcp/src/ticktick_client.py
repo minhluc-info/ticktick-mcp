@@ -3,12 +3,21 @@ import json
 import base64
 import requests
 import logging
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import Dict, List, Any, Optional, Tuple
 
-# Set up logging
+# Set up detailed logging for the client
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Add a handler that prints to stdout
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 class TickTickClient:
     """
@@ -155,16 +164,36 @@ class TickTickClient:
         """
         url = f"{self.base_url}{endpoint}"
         
+        # Log the request details
+        logger.debug(f"Making {method} request to {url}")
+        logger.debug(f"Headers: {self.headers}")
+        if data:
+            logger.debug(f"Request data: {json.dumps(data, indent=2)}")
+        
         try:
             # Make the request
             if method == "GET":
+                logger.debug(f"Sending GET request to {url}")
                 response = requests.get(url, headers=self.headers)
             elif method == "POST":
+                logger.debug(f"Sending POST request to {url} with data: {data}")
                 response = requests.post(url, headers=self.headers, json=data)
             elif method == "DELETE":
+                logger.debug(f"Sending DELETE request to {url}")
                 response = requests.delete(url, headers=self.headers)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
+            
+            # Log the response
+            logger.debug(f"Response status code: {response.status_code}")
+            logger.debug(f"Response headers: {response.headers}")
+            
+            # Try to log response body if it exists
+            try:
+                if response.text:
+                    logger.debug(f"Response body: {response.text[:1000]}")  # Limit to first 1000 chars
+            except Exception as e:
+                logger.debug(f"Could not log response body: {e}")
             
             # Check if the request was unauthorized (401)
             if response.status_code == 401:
@@ -172,6 +201,9 @@ class TickTickClient:
                 
                 # Try to refresh the access token
                 if self._refresh_access_token():
+                    logger.debug("Token refreshed, retrying request with new token")
+                    logger.debug(f"New authorization header: {self.headers['Authorization']}")
+                    
                     # Retry the request with the new token
                     if method == "GET":
                         response = requests.get(url, headers=self.headers)
@@ -179,6 +211,10 @@ class TickTickClient:
                         response = requests.post(url, headers=self.headers, json=data)
                     elif method == "DELETE":
                         response = requests.delete(url, headers=self.headers)
+                    
+                    logger.debug(f"Retry response status code: {response.status_code}")
+                else:
+                    logger.error("Failed to refresh token")
             
             # Raise an exception for 4xx/5xx status codes
             response.raise_for_status()
@@ -187,9 +223,15 @@ class TickTickClient:
             if response.status_code == 204 or response.text == "":
                 return {}
             
+            # Log success
+            logger.debug(f"Request successful with status {response.status_code}")
             return response.json()
         except requests.exceptions.RequestException as e:
             logger.error(f"API request failed: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response status code: {e.response.status_code}")
+                logger.error(f"Response headers: {e.response.headers}")
+                logger.error(f"Response body: {e.response.text}")
             return {"error": str(e)}
     
     # Project methods
