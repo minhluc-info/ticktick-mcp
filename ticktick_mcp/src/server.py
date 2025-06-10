@@ -69,6 +69,33 @@ def to_bangkok_time(date_str: str) -> str:
     
     return date_str
 
+# Helper functions for datetime validation and normalization
+def validate_datetime_string(date_str: str, field_name: str) -> Optional[str]:
+    """Validate datetime string format."""
+    if not date_str:
+        return None
+    try:
+        # Try to parse the date to validate it
+        datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return None
+    except ValueError:
+        return f"Invalid {field_name} format. Use ISO format: YYYY-MM-DDTHH:mm:ss+07:00 or YYYY-MM-DD"
+
+def normalize_datetime_for_user(date_str: str) -> str:
+    """Normalize datetime string to Bangkok timezone if no timezone specified."""
+    if not date_str:
+        return date_str
+    
+    # If no timezone info, assume Bangkok time
+    if not re.search(r'[+-]\d{2}:?\d{2}|Z$', date_str):
+        # Add Bangkok timezone (+07:00)
+        if 'T' in date_str:
+            return date_str + '+07:00'
+        else:
+            return date_str + 'T00:00:00+07:00'
+    
+    return date_str
+
 # Rate limiting helper
 def rate_limit(calls_per_second: int = 10):
     """Simple rate limiting decorator."""
@@ -120,7 +147,7 @@ def format_task(task: Dict) -> str:
     if items:
         formatted += f"\nSubtasks ({len(items)}):\n"
         for i, item in enumerate(items, 1):
-            status = "✓" if item.get('status') == 1 else "○"
+            status = "✓" if item.get('status') == 1 else "✗"
             formatted += f"{i}. [{status}] {item.get('title', 'No title')}\n"
     
     return formatted
@@ -468,6 +495,166 @@ async def create_multiple_tasks(tasks: List[Dict]) -> str:
     
     return result
 
+# NEW: Batch update multiple tasks
+@mcp.tool()
+async def update_task_batch(updates: List[Dict]) -> str:
+    """
+    Update multiple tasks in TickTick efficiently.
+    
+    Args:
+        updates: List of task update dictionaries. Each update must contain:
+            - task_id (required): ID of the task to update
+            - project_id (required): ID of the project the task belongs to
+            - title (optional): New task title
+            - content (optional): New task description/content
+            - start_date (optional): New start date in user timezone (YYYY-MM-DDTHH:mm:ss or with timezone)
+            - due_date (optional): New due date in user timezone (YYYY-MM-DDTHH:mm:ss or with timezone)
+            - priority (optional): New priority level (0: None, 1: Low, 3: Medium, 5: High)
+    
+    Example:
+        updates = [
+            {"task_id": "123", "project_id": "456", "title": "Updated task 1", "priority": 5},
+            {"task_id": "124", "project_id": "456", "due_date": "2025-06-15T10:00:00", "priority": 3}
+        ]
+    """
+    if not ticktick:
+        if not initialize_client():
+            return "Failed to initialize TickTick client. Please check your API credentials."
+    
+    if not updates:
+        return "No updates provided."
+    
+    if len(updates) > 50:
+        return "Too many task updates. Maximum 50 tasks per batch for performance."
+    
+    # Track results
+    successful_updates = []
+    failed_updates = []
+    
+    logger.info(f"Updating batch of {len(updates)} tasks")
+    
+    for i, update_data in enumerate(updates, 1):
+        try:
+            # Validate required fields
+            if not isinstance(update_data, dict):
+                failed_updates.append({
+                    'index': i,
+                    'error': 'Update must be a dictionary'
+                })
+                continue
+                
+            task_id = update_data.get('task_id')
+            project_id = update_data.get('project_id')
+            
+            if not task_id:
+                failed_updates.append({
+                    'index': i,
+                    'error': 'Missing required field: task_id'
+                })
+                continue
+                
+            if not project_id:
+                failed_updates.append({
+                    'index': i,
+                    'error': 'Missing required field: project_id'
+                })
+                continue
+            
+            # Extract optional fields
+            title = update_data.get('title')
+            content = update_data.get('content')
+            start_date = update_data.get('start_date')
+            due_date = update_data.get('due_date')
+            priority = update_data.get('priority')
+            
+            # Validate priority if provided
+            if priority is not None and priority not in [0, 1, 3, 5]:
+                failed_updates.append({
+                    'index': i,
+                    'task_id': task_id,
+                    'error': f'Invalid priority {priority}. Must be 0, 1, 3, or 5'
+                })
+                continue
+            
+            # Validate and normalize dates if provided
+            normalized_start_date = None
+            normalized_due_date = None
+            
+            if start_date:
+                validation_error = validate_datetime_string(start_date, "start_date")
+                if validation_error:
+                    failed_updates.append({
+                        'index': i,
+                        'task_id': task_id,
+                        'error': validation_error
+                    })
+                    continue
+                normalized_start_date = normalize_datetime_for_user(start_date)
+            
+            if due_date:
+                validation_error = validate_datetime_string(due_date, "due_date")
+                if validation_error:
+                    failed_updates.append({
+                        'index': i,
+                        'task_id': task_id,
+                        'error': validation_error
+                    })
+                    continue
+                normalized_due_date = normalize_datetime_for_user(due_date)
+            
+            # Update the task
+            result = ticktick.update_task(
+                task_id=task_id,
+                project_id=project_id,
+                title=title,
+                content=content,
+                start_date=normalized_start_date,
+                due_date=normalized_due_date,
+                priority=priority
+            )
+            
+            if 'error' in result:
+                failed_updates.append({
+                    'index': i,
+                    'task_id': task_id,
+                    'error': result['error']
+                })
+            else:
+                successful_updates.append({
+                    'index': i,
+                    'task_id': task_id,
+                    'title': title or result.get('title', 'Unknown'),
+                    'task': result
+                })
+                
+        except Exception as e:
+            failed_updates.append({
+                'index': i,
+                'task_id': update_data.get('task_id', 'Unknown'),
+                'error': str(e)
+            })
+    
+    # Generate summary report
+    result = f"Batch task update completed:\n"
+    result += f"✅ Successful: {len(successful_updates)}/{len(updates)} tasks\n"
+    result += f"❌ Failed: {len(failed_updates)}/{len(updates)} tasks\n\n"
+    
+    if successful_updates:
+        result += "Successfully updated tasks:\n"
+        for success in successful_updates[:5]:  # Show first 5
+            result += f"  {success['index']}. {success['title']} (ID: {success['task_id']})\n"
+        if len(successful_updates) > 5:
+            result += f"  ... and {len(successful_updates) - 5} more\n"
+        result += "\n"
+    
+    if failed_updates:
+        result += "Failed updates:\n"
+        for failure in failed_updates:
+            result += f"  {failure['index']}. {failure['task_id']}: {failure['error']}\n"
+        result += "\n"
+    
+    return result
+
 # NEW: Search tasks by text
 @mcp.tool()
 async def search_tasks(
@@ -700,6 +887,126 @@ async def get_today_tasks(project_id: str = None) -> str:
         logger.error(f"Error in get_today_tasks: {e}")
         return f"Error getting today's tasks: {str(e)}"
 
+# NEW: Get upcoming tasks for the next N days
+@mcp.tool()
+async def get_upcoming_tasks(days: int = 7, project_id: str = None) -> str:
+    """
+    Get all tasks due in the next N days (Bangkok timezone).
+    
+    Args:
+        days: Number of days to look ahead (default: 7)
+        project_id: Optional project ID to limit scope (default: all projects)
+    """
+    if not ticktick:
+        if not initialize_client():
+            return "Failed to initialize TickTick client. Please check your API credentials."
+    
+    if days <= 0:
+        return "Days must be a positive number."
+    
+    if days > 365:
+        return "Days cannot exceed 365 for performance reasons."
+    
+    try:
+        # Get current time and future cutoff in Bangkok timezone
+        now = datetime.now(BANGKOK_TZ)
+        future_cutoff = now + timedelta(days=days)
+        
+        # Get tasks
+        if project_id:
+            project_data = ticktick.get_project_with_data(project_id)
+            if 'error' in project_data:
+                return f"Error fetching project: {project_data['error']}"
+            all_tasks = project_data.get('tasks', [])
+            scope = f"project '{project_data.get('project', {}).get('name', project_id)}'"
+        else:
+            # Get from all projects
+            projects = ticktick.get_projects()
+            if 'error' in projects:
+                return f"Error fetching projects: {projects['error']}"
+            
+            all_tasks = []
+            for project in projects:
+                project_data = ticktick.get_project_with_data(project['id'])
+                if 'error' not in project_data:
+                    all_tasks.extend(project_data.get('tasks', []))
+            scope = "all projects"
+        
+        # Find upcoming tasks
+        upcoming_tasks = []
+        for task in all_tasks:
+            # Skip completed tasks
+            if task.get('status') == 2:
+                continue
+                
+            due_date_str = task.get('dueDate')
+            if due_date_str:
+                try:
+                    # Parse due date
+                    due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
+                    
+                    # Convert to Bangkok timezone
+                    if due_date.tzinfo is None:
+                        due_date = due_date.replace(tzinfo=BANGKOK_TZ)
+                    else:
+                        due_date = due_date.astimezone(BANGKOK_TZ)
+                    
+                    # Check if due within the specified days
+                    if now <= due_date <= future_cutoff:
+                        upcoming_tasks.append((task, due_date))
+                        
+                except (ValueError, TypeError):
+                    continue  # Skip invalid dates
+        
+        # Sort by due date (earliest first)
+        upcoming_tasks.sort(key=lambda x: x[1])
+        
+        if not upcoming_tasks:
+            return f"📅 No upcoming tasks found in the next {days} day{'s' if days != 1 else ''} in {scope}."
+        
+        result = f"📅 Found {len(upcoming_tasks)} tasks due in the next {days} day{'s' if days != 1 else ''} in {scope}:\n\n"
+        
+        # Group by date for better readability
+        current_date = None
+        for i, (task, due_date) in enumerate(upcoming_tasks, 1):
+            task_date = due_date.date()
+            
+            # Add date header if this is a new date
+            if current_date != task_date:
+                current_date = task_date
+                days_from_now = (task_date - now.date()).days
+                
+                if days_from_now == 0:
+                    date_label = "📍 Today"
+                elif days_from_now == 1:
+                    date_label = "📍 Tomorrow"
+                else:
+                    date_label = f"📍 {task_date.strftime('%A, %B %d')} ({days_from_now} days)"
+                
+                result += f"\n{date_label}:\n"
+            
+            # Format task info
+            time_str = due_date.strftime('%H:%M') if due_date.hour != 0 or due_date.minute != 0 else "All day"
+            priority_emoji = {0: "⚪", 1: "🔵", 3: "🟡", 5: "🔴"}.get(task.get('priority', 0), "⚪")
+            
+            result += f"  {priority_emoji} {task.get('title', 'No title')} ({time_str})\n"
+            
+            # Add project info if showing all projects
+            if not project_id:
+                result += f"    📁 Project ID: {task.get('projectId', 'Unknown')}\n"
+            
+            # Add content if available (truncated)
+            content = task.get('content', '')
+            if content:
+                content_preview = content[:50] + "..." if len(content) > 50 else content
+                result += f"    📝 {content_preview}\n"
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in get_upcoming_tasks: {e}")
+        return f"Error getting upcoming tasks: {str(e)}"
+
 # NEW: Get project statistics
 @mcp.tool() 
 async def get_project_stats(project_id: str) -> str:
@@ -924,7 +1231,7 @@ async def create_project(
     
     try:
         project = ticktick.create_project(
-            name=name,
+           name=name,
             color=color,
             view_mode=view_mode
         )
