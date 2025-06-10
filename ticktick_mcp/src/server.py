@@ -135,6 +135,7 @@ def initialize_client():
         # Initialize the client
         ticktick = TickTickClient()
         logger.info("TickTick client initialized successfully")
+        logger.info(f"Using timezone: {USER_TIMEZONE}")
         
         # Test API connectivity
         projects = ticktick.get_projects()
