@@ -31,8 +31,30 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # User timezone configuration
-USER_TIMEZONE = ZoneInfo("Asia/Bangkok")  # +07:00
 UTC_TIMEZONE = ZoneInfo("UTC")
+
+def get_user_timezone():
+    """Get user timezone from env variable, system, or fallback to UTC."""
+    # 1. Check .env file first
+    env_tz = os.getenv("TICKTICK_USER_TIMEZONE")
+    if env_tz:
+        try:
+            return ZoneInfo(env_tz)
+        except Exception:
+            logger.warning(f"Invalid timezone in .env: {env_tz}, falling back to system timezone")
+    
+    # 2. Try to detect system timezone
+    try:
+        import time
+        system_tz = time.tzname[0] if time.daylight == 0 else time.tzname[1]
+        return ZoneInfo(system_tz)
+    except Exception:
+        logger.warning("Could not detect system timezone, using UTC")
+        # 3. Fallback to UTC
+        return ZoneInfo("UTC")
+
+# Get user timezone
+USER_TIMEZONE = get_user_timezone()
 
 # Create FastMCP server
 mcp = FastMCP("ticktick")
