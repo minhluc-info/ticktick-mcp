@@ -5,22 +5,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
-# Timezone support with fallback
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    # Fallback for Python < 3.9
-    from datetime import timezone, timedelta
-    class ZoneInfo:
-        @staticmethod
-        def __new__(cls, key):
-            if key == "Asia/Bangkok":
-                return timezone(timedelta(hours=7))
-            elif key == "UTC":
-                return timezone.utc
-            else:
-                return timezone.utc
-
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
 
