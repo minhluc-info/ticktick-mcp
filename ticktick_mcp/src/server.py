@@ -109,21 +109,6 @@ def validate_datetime_string(date_str: str, field_name: str) -> Optional[str]:
     except ValueError:
         return f"Invalid {field_name} format. Use ISO format: YYYY-MM-DDTHH:mm:ss+07:00 or YYYY-MM-DD"
 
-def normalize_datetime_for_user(date_str: str) -> str:
-    """Normalize datetime string to Bangkok timezone if no timezone specified."""
-    if not date_str:
-        return date_str
-    
-    # If no timezone info, assume Bangkok time
-    if not re.search(r'[+-]\d{2}:?\d{2}|Z$', date_str):
-        # Add Bangkok timezone (+07:00)
-        if 'T' in date_str:
-            return date_str + '+07:00'
-        else:
-            return date_str + 'T00:00:00+07:00'
-    
-    return date_str
-
 # Rate limiting helper
 def rate_limit(calls_per_second: int = 10):
     """Simple rate limiting decorator."""
