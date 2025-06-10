@@ -313,104 +313,160 @@ async def create_task(
 
 # NEW: Batch create multiple tasks
 @mcp.tool()
-async def create_multiple_tasks(tasks_data: str) -> str:
+async def create_multiple_tasks(tasks: List[Dict]) -> str:
     """
-    Create multiple tasks at once. Much faster than creating them one by one.
+    Create multiple tasks in TickTick efficiently.
     
     Args:
-        tasks_data: JSON string containing list of task objects. Each task should have:
-                   {
-                     "title": "Task title",
-                     "project_id": "project_id", 
-                     "content": "description (optional)",
-                     "due_date": "YYYY-MM-DD or ISO format (optional)",
-                     "priority": 0-5 (optional)
-                   }
+        tasks: List of task dictionaries. Each task must contain:
+            - title (required): Task title
+            - project_id (required): ID of the project to add the task to
+            - content (optional): Task description/content
+            - start_date (optional): Start date in user timezone (YYYY-MM-DDTHH:mm:ss or with timezone)
+            - due_date (optional): Due date in user timezone (YYYY-MM-DDTHH:mm:ss or with timezone)  
+            - priority (optional): Priority level (0: None, 1: Low, 3: Medium, 5: High)
     
-    Example: '[{"title": "Task 1", "project_id": "123"}, {"title": "Task 2", "project_id": "123", "priority": 5}]'
+    Example:
+        tasks = [
+            {"title": "Task 1", "project_id": "123", "priority": 3},
+            {"title": "Task 2", "project_id": "123", "content": "Description", "due_date": "2025-06-15T10:00:00"}
+        ]
     """
     if not ticktick:
         if not initialize_client():
             return "Failed to initialize TickTick client. Please check your API credentials."
     
-    try:
-        # Parse JSON data
-        tasks = json.loads(tasks_data)
-        if not isinstance(tasks, list):
-            return "Error: tasks_data must be a JSON array of task objects."
-        
-        if len(tasks) > 50:  # Reasonable limit
-            return "Error: Maximum 50 tasks allowed per batch operation."
-        
-        created_tasks = []
-        failed_tasks = []
-        
-        for i, task_data in enumerate(tasks):
-            try:
-                # Validate required fields
-                if 'title' not in task_data or 'project_id' not in task_data:
-                    failed_tasks.append(f"Task {i+1}: Missing title or project_id")
-                    continue
+    if not tasks:
+        return "No tasks provided to create."
+    
+    if len(tasks) > 50:
+        return "Too many tasks. Maximum 50 tasks per batch for performance."
+    
+    # Track results
+    successful_tasks = []
+    failed_tasks = []
+    
+    logger.info(f"Creating batch of {len(tasks)} tasks")
+    
+    for i, task_data in enumerate(tasks, 1):
+        try:
+            # Validate required fields
+            if not isinstance(task_data, dict):
+                failed_tasks.append({
+                    'index': i,
+                    'error': 'Task must be a dictionary'
+                })
+                continue
                 
-                # Extract and validate data
-                title = task_data['title']
-                project_id = task_data['project_id'] 
-                content = task_data.get('content')
-                start_date = task_data.get('start_date')
-                due_date = task_data.get('due_date')
-                priority = task_data.get('priority', 0)
-                
-                # Convert dates to Bangkok timezone
-                if start_date:
-                    start_date = to_bangkok_time(start_date)
-                if due_date:
-                    due_date = to_bangkok_time(due_date)
-                
-                # Create task with rate limiting
-                task = ticktick.create_task(
-                    title=title,
-                    project_id=project_id,
-                    content=content,
-                    start_date=start_date,
-                    due_date=due_date,
-                    priority=priority
-                )
-                
-                if 'error' in task:
-                    failed_tasks.append(f"Task '{title}': {task['error']}")
-                else:
-                    created_tasks.append(task)
-                    
-                # Brief pause to avoid rate limits
-                await asyncio.sleep(0.1)
-                
-            except Exception as e:
-                failed_tasks.append(f"Task {i+1}: {str(e)}")
-        
-        # Format results
-        result = f"Batch task creation completed:\n"
-        result += f"✅ Successfully created: {len(created_tasks)} tasks\n"
-        
-        if failed_tasks:
-            result += f"❌ Failed: {len(failed_tasks)} tasks\n\nErrors:\n"
-            for error in failed_tasks:
-                result += f"- {error}\n"
-        
-        if created_tasks:
-            result += f"\nCreated tasks:\n"
-            for i, task in enumerate(created_tasks[:5], 1):  # Show first 5
-                result += f"{i}. {task.get('title', 'No title')} (ID: {task.get('id')})\n"
+            title = task_data.get('title')
+            project_id = task_data.get('project_id')
             
-            if len(created_tasks) > 5:
-                result += f"... and {len(created_tasks) - 5} more tasks\n"
-        
-        return result
-        
-    except json.JSONDecodeError:
-        return "Error: Invalid JSON format in tasks_data. Please provide a valid JSON array."
-    except Exception as e:
-        logger.error(f"Error in create_multiple_tasks: {e}")
-        return f"Error creating multiple tasks: {str(e)}"
+            if not title:
+                failed_tasks.append({
+                    'index': i,
+                    'error': 'Missing required field: title'
+                })
+                continue
+                
+            if not project_id:
+                failed_tasks.append({
+                    'index': i,
+                    'error': 'Missing required field: project_id'
+                })
+                continue
+            
+            # Extract optional fields with defaults
+            content = task_data.get('content')
+            start_date = task_data.get('start_date')
+            due_date = task_data.get('due_date')
+            priority = task_data.get('priority', 0)
+            
+            # Validate priority
+            if priority not in [0, 1, 3, 5]:
+                failed_tasks.append({
+                    'index': i,
+                    'title': title,
+                    'error': f'Invalid priority {priority}. Must be 0, 1, 3, or 5'
+                })
+                continue
+            
+            # Validate and normalize dates if provided
+            normalized_start_date = None
+            normalized_due_date = None
+            
+            if start_date:
+                validation_error = validate_datetime_string(start_date, "start_date")
+                if validation_error:
+                    failed_tasks.append({
+                        'index': i,
+                        'title': title,
+                        'error': validation_error
+                    })
+                    continue
+                normalized_start_date = normalize_datetime_for_user(start_date)
+            
+            if due_date:
+                validation_error = validate_datetime_string(due_date, "due_date")
+                if validation_error:
+                    failed_tasks.append({
+                        'index': i,
+                        'title': title,
+                        'error': validation_error
+                    })
+                    continue
+                normalized_due_date = normalize_datetime_for_user(due_date)
+            
+            # Create the task
+            task = ticktick.create_task(
+                title=title,
+                project_id=project_id,
+                content=content,
+                start_date=normalized_start_date,
+                due_date=normalized_due_date,
+                priority=priority
+            )
+            
+            if 'error' in task:
+                failed_tasks.append({
+                    'index': i,
+                    'title': title,
+                    'error': task['error']
+                })
+            else:
+                successful_tasks.append({
+                    'index': i,
+                    'title': title,
+                    'id': task.get('id'),
+                    'task': task
+                })
+                
+        except Exception as e:
+            failed_tasks.append({
+                'index': i,
+                'title': task_data.get('title', 'Unknown'),
+                'error': str(e)
+            })
+    
+    # Generate summary report
+    result = f"Batch task creation completed:\n"
+    result += f"✅ Successful: {len(successful_tasks)}/{len(tasks)} tasks\n"
+    result += f"❌ Failed: {len(failed_tasks)}/{len(tasks)} tasks\n\n"
+    
+    if successful_tasks:
+        result += "Successfully created tasks:\n"
+        for success in successful_tasks[:5]:  # Show first 5
+            result += f"  {success['index']}. {success['title']} (ID: {success['id']})\n"
+        if len(successful_tasks) > 5:
+            result += f"  ... and {len(successful_tasks) - 5} more\n"
+        result += "\n"
+    
+    if failed_tasks:
+        result += "Failed tasks:\n"
+        for failure in failed_tasks:
+            result += f"  {failure['index']}. {failure['title']}: {failure['error']}\n"
+        result += "\n"
+    
+    return result
 
 # NEW: Search tasks by text
 @mcp.tool()
