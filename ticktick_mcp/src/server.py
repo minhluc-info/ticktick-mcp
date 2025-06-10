@@ -5,6 +5,22 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
+# Timezone support with fallback
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    # Fallback for Python < 3.9
+    from datetime import timezone, timedelta
+    class ZoneInfo:
+        @staticmethod
+        def __new__(cls, key):
+            if key == "Asia/Bangkok":
+                return timezone(timedelta(hours=7))
+            elif key == "UTC":
+                return timezone.utc
+            else:
+                return timezone.utc
+
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
 
@@ -14,11 +30,74 @@ from .ticktick_client import TickTickClient
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# User timezone configuration
+USER_TIMEZONE = ZoneInfo("Asia/Bangkok")  # +07:00
+UTC_TIMEZONE = ZoneInfo("UTC")
+
 # Create FastMCP server
 mcp = FastMCP("ticktick")
 
 # Create TickTick client
 ticktick = None
+
+def normalize_datetime_for_user(date_str: str) -> str:
+    """
+    Convert datetime string to user's timezone.
+    Handles various input formats and ensures proper timezone conversion.
+    
+    Args:
+        date_str: ISO format datetime string
+        
+    Returns:
+        Properly formatted datetime string in user's timezone
+    """
+    if not date_str:
+        return date_str
+        
+    try:
+        # Parse the datetime
+        if date_str.endswith('Z'):
+            # UTC format
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        elif '+' in date_str or date_str.count('-') > 2:
+            # Already has timezone info
+            dt = datetime.fromisoformat(date_str)
+        else:
+            # No timezone info - assume user's timezone
+            dt = datetime.fromisoformat(date_str)
+            dt = dt.replace(tzinfo=USER_TIMEZONE)
+            
+        # Convert to user timezone if needed
+        if dt.tzinfo != USER_TIMEZONE:
+            dt = dt.astimezone(USER_TIMEZONE)
+            
+        # Return in ISO format with timezone
+        return dt.isoformat()
+        
+    except ValueError as e:
+        logger.warning(f"Failed to parse datetime '{date_str}': {e}")
+        # Return original string if parsing fails
+        return date_str
+
+def validate_datetime_string(date_str: str, field_name: str) -> Optional[str]:
+    """
+    Validate and normalize datetime string.
+    
+    Args:
+        date_str: Input datetime string
+        field_name: Name of the field for error messages
+        
+    Returns:
+        Error message if invalid, None if valid
+    """
+    if not date_str:
+        return None
+        
+    try:
+        normalized = normalize_datetime_for_user(date_str)
+        return None
+    except Exception as e:
+        return f"Invalid {field_name} format. Use ISO format: YYYY-MM-DDTHH:mm:ss+07:00 or YYYY-MM-DDTHH:mm:ss"
 
 def initialize_client():
     global ticktick
@@ -57,11 +136,15 @@ def format_task(task: Dict) -> str:
     # Add project ID
     formatted += f"Project ID: {task.get('projectId', 'None')}\n"
     
-    # Add dates if available
+    # Add dates if available - now with proper timezone display
     if task.get('startDate'):
-        formatted += f"Start Date: {task.get('startDate')}\n"
+        # Normalize to user timezone for display
+        normalized_start = normalize_datetime_for_user(task.get('startDate'))
+        formatted += f"Start Date: {normalized_start}\n"
     if task.get('dueDate'):
-        formatted += f"Due Date: {task.get('dueDate')}\n"
+        # Normalize to user timezone for display
+        normalized_due = normalize_datetime_for_user(task.get('dueDate'))
+        formatted += f"Due Date: {normalized_due}\n"
     
     # Add priority if available
     priority_map = {0: "None", 1: "Low", 3: "Medium", 5: "High"}
@@ -81,7 +164,7 @@ def format_task(task: Dict) -> str:
     if items:
         formatted += f"\nSubtasks ({len(items)}):\n"
         for i, item in enumerate(items, 1):
-            status = "✓" if item.get('status') == 1 else "□"
+            status = "✓" if item.get('status') == 1 else "◇"
             formatted += f"{i}. [{status}] {item.get('title', 'No title')}\n"
     
     return formatted
@@ -227,8 +310,8 @@ async def create_task(
         title: Task title
         project_id: ID of the project to add the task to
         content: Task description/content (optional)
-        start_date: Start date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
-        due_date: Due date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
+        start_date: Start date in Asia/Bangkok timezone. Formats: YYYY-MM-DDTHH:mm:ss or YYYY-MM-DDTHH:mm:ss+07:00 (optional)
+        due_date: Due date in Asia/Bangkok timezone. Formats: YYYY-MM-DDTHH:mm:ss or YYYY-MM-DDTHH:mm:ss+07:00 (optional)
         priority: Priority level (0: None, 1: Low, 3: Medium, 5: High) (optional)
     """
     if not ticktick:
@@ -240,21 +323,28 @@ async def create_task(
         return "Invalid priority. Must be 0 (None), 1 (Low), 3 (Medium), or 5 (High)."
     
     try:
-        # Validate dates if provided
-        for date_str, date_name in [(start_date, "start_date"), (due_date, "due_date")]:
-            if date_str:
-                try:
-                    # Try to parse the date to validate it
-                    datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                except ValueError:
-                    return f"Invalid {date_name} format. Use ISO format: YYYY-MM-DDThh:mm:ss+0000"
+        # Validate and normalize dates if provided
+        normalized_start_date = None
+        normalized_due_date = None
+        
+        if start_date:
+            validation_error = validate_datetime_string(start_date, "start_date")
+            if validation_error:
+                return validation_error
+            normalized_start_date = normalize_datetime_for_user(start_date)
+        
+        if due_date:
+            validation_error = validate_datetime_string(due_date, "due_date")
+            if validation_error:
+                return validation_error
+            normalized_due_date = normalize_datetime_for_user(due_date)
         
         task = ticktick.create_task(
             title=title,
             project_id=project_id,
             content=content,
-            start_date=start_date,
-            due_date=due_date,
+            start_date=normalized_start_date,
+            due_date=normalized_due_date,
             priority=priority
         )
         
@@ -284,8 +374,8 @@ async def update_task(
         project_id: ID of the project the task belongs to
         title: New task title (optional)
         content: New task description/content (optional)
-        start_date: New start date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
-        due_date: New due date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
+        start_date: New start date in Asia/Bangkok timezone. Formats: YYYY-MM-DDTHH:mm:ss or YYYY-MM-DDTHH:mm:ss+07:00 (optional)
+        due_date: New due date in Asia/Bangkok timezone. Formats: YYYY-MM-DDTHH:mm:ss or YYYY-MM-DDTHH:mm:ss+07:00 (optional)
         priority: New priority level (0: None, 1: Low, 3: Medium, 5: High) (optional)
     """
     if not ticktick:
@@ -297,22 +387,29 @@ async def update_task(
         return "Invalid priority. Must be 0 (None), 1 (Low), 3 (Medium), or 5 (High)."
     
     try:
-        # Validate dates if provided
-        for date_str, date_name in [(start_date, "start_date"), (due_date, "due_date")]:
-            if date_str:
-                try:
-                    # Try to parse the date to validate it
-                    datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                except ValueError:
-                    return f"Invalid {date_name} format. Use ISO format: YYYY-MM-DDThh:mm:ss+0000"
+        # Validate and normalize dates if provided
+        normalized_start_date = None
+        normalized_due_date = None
+        
+        if start_date:
+            validation_error = validate_datetime_string(start_date, "start_date")
+            if validation_error:
+                return validation_error
+            normalized_start_date = normalize_datetime_for_user(start_date)
+        
+        if due_date:
+            validation_error = validate_datetime_string(due_date, "due_date")
+            if validation_error:
+                return validation_error
+            normalized_due_date = normalize_datetime_for_user(due_date)
         
         task = ticktick.update_task(
-            task_id=task_id,
+           task_id=task_id,
             project_id=project_id,
             title=title,
             content=content,
-            start_date=start_date,
-            due_date=due_date,
+            start_date=normalized_start_date,
+            due_date=normalized_due_date,
             priority=priority
         )
         
