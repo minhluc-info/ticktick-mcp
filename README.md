@@ -220,8 +220,7 @@ ticktick-mcp/
         ├── __init__.py     # Module initialization
         ├── auth.py         # OAuth authentication implementation
         ├── server.py       # MCP server implementation
-        ├── ticktick_client.py  # TickTick API client
-        └── timezone_utils.py   # Timezone utilities
+        └── ticktick_client.py  # TickTick API client
 ```
 
 ### Authentication Flow
