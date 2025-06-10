@@ -9,8 +9,12 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ti
 - 🔄 Update existing task details (title, content, dates, priority)
 - ✅ Mark tasks as complete
 - 🗑️ Delete tasks and projects
-- 🔄 Full integration with TickTick's open API
-- 🔌 Seamless integration with Claude and other MCP clients
+- 🔗 Full integration with TickTick's open API
+- 🔄 Seamless integration with Claude and other MCP clients
+- 🌍 **Enhanced Features**: Timezone support, batch operations, search & analytics
+- 📊 Advanced task analytics and project statistics
+- 🔍 Smart search across tasks and projects
+- ⏰ Overdue and upcoming task management
 
 ## Prerequisites
 
@@ -83,6 +87,21 @@ This server uses OAuth2 to authenticate with TickTick. The setup process is stra
 
 The server handles token refresh automatically, so you won't need to reauthenticate unless you revoke access or delete your `.env` file.
 
+## Timezone Configuration
+
+The MCP server supports automatic timezone detection and manual configuration:
+
+**Automatic Detection**: The server will try to detect your system timezone automatically using multiple methods.
+
+**Manual Configuration**: Set your timezone in the `.env` file:
+```env
+TICKTICK_USER_TIMEZONE=America/Los_Angeles  # San Francisco
+TICKTICK_USER_TIMEZONE=Europe/London        # London
+TICKTICK_USER_TIMEZONE=Asia/Bangkok         # Bangkok
+```
+
+**Supported Format**: Use IANA timezone names (e.g., `America/New_York`, `Europe/Berlin`, `Asia/Tokyo`).
+
 ## Authentication with Dida365
 
 [滴答清单 - Dida365](https://dida365.com/home) is China version of TickTick, and the authentication process is similar to TickTick. Follow these steps to set up Dida365 authentication:
@@ -133,8 +152,9 @@ Once connected, you'll see the TickTick MCP server tools available in Claude, in
 
 ## Available MCP Tools
 
+### Basic Operations
 | Tool | Description | Parameters |
-|------|-------------|------------|
+|------|-------------|-------------|
 | `get_projects` | List all your TickTick projects | None |
 | `get_project` | Get details about a specific project | `project_id` |
 | `get_project_tasks` | List all tasks in a project | `project_id` |
@@ -146,16 +166,40 @@ Once connected, you'll see the TickTick MCP server tools available in Claude, in
 | `create_project` | Create a new project | `name`, `color` (optional), `view_mode` (optional) |
 | `delete_project` | Delete a project | `project_id` |
 
+### Enhanced Operations
+| Tool | Description | Parameters |
+|------|-------------|-------------|
+| `create_multiple_tasks` | Create multiple tasks efficiently | `tasks` (list of task objects) |
+| `update_task_batch` | Update multiple tasks efficiently | `updates` (list of update objects) |
+| `search_tasks` | Search tasks by title or content | `query`, `project_id` (optional), `include_completed` (optional) |
+| `get_overdue_tasks` | Get all overdue tasks | `project_id` (optional) |
+| `get_today_tasks` | Get tasks due today | `project_id` (optional) |
+| `get_upcoming_tasks` | Get tasks due in next N days | `days` (default: 7), `project_id` (optional) |
+| `get_project_stats` | Get detailed project statistics | `project_id` |
+
 ## Example Prompts for Claude
 
 Here are some example prompts to use with Claude after connecting the TickTick MCP server:
 
+### Basic Operations
 - "Show me all my TickTick projects"
 - "Create a new task called 'Finish MCP server documentation' in my work project with high priority"
 - "List all tasks in my personal project"
 - "Mark the task 'Buy groceries' as complete"
 - "Create a new project called 'Vacation Planning' with a blue color"
-- "When is my next deadline in TickTick?"
+
+### Enhanced Operations
+- "Show me all overdue tasks across all projects"
+- "What tasks do I have due today?"
+- "Search for tasks containing 'meeting' in all my projects"
+- "Create 5 tasks for my morning routine in my personal project"
+- "Show me upcoming tasks for the next 2 weeks"
+- "Give me statistics for my work project"
+- "Find all high-priority tasks that are overdue"
+
+### Batch Operations
+- "Create multiple tasks: 'Review code', 'Write tests', 'Deploy to staging' all in my development project"
+- "Update all my overdue tasks to be due tomorrow"
 
 ## Development
 
@@ -163,19 +207,19 @@ Here are some example prompts to use with Claude after connecting the TickTick M
 
 ```
 ticktick-mcp/
-├── .env.template          # Template for environment variables
-├── README.md              # Project documentation
-├── requirements.txt       # Project dependencies
-├── setup.py               # Package setup file
-├── test_server.py         # Test script for server configuration
-└── ticktick_mcp/          # Main package
-    ├── __init__.py        # Package initialization
-    ├── authenticate.py    # OAuth authentication utility
-    ├── cli.py             # Command-line interface
-    └── src/               # Source code
-        ├── __init__.py    # Module initialization
-        ├── auth.py        # OAuth authentication implementation
-        ├── server.py      # MCP server implementation
+├── .env.template           # Template for environment variables
+├── README.md               # Project documentation
+├── requirements.txt        # Project dependencies
+├── setup.py                # Package setup file
+├── test_server.py          # Test script for server configuration
+└── ticktick_mcp/           # Main package
+    ├── __init__.py         # Package initialization
+    ├── authenticate.py     # OAuth authentication utility
+    ├── cli.py              # Command-line interface
+    └── src/                # Source code
+        ├── __init__.py     # Module initialization
+        ├── auth.py         # OAuth authentication implementation
+        ├── server.py       # MCP server implementation
         └── ticktick_client.py  # TickTick API client
 ```
 
