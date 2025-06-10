@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from typing import Dict, List, Any, Optional
 import time
 import re
+import subprocess
 
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
@@ -30,24 +31,76 @@ from zoneinfo import ZoneInfo
 UTC_TIMEZONE = ZoneInfo("UTC")
 
 def get_user_timezone():
-    """Get user timezone from env variable, system, or fallback to UTC."""
-    # 1. Check .env file first
+    """Get user timezone from env variable, system detection, or fallback to UTC."""
+    # 1. Check .env file first (highest priority)
     env_tz = os.getenv("TICKTICK_USER_TIMEZONE")
     if env_tz:
         try:
             return ZoneInfo(env_tz)
         except Exception:
-            logger.warning(f"Invalid timezone in .env: {env_tz}, falling back to system timezone")
+            logger.warning(f"Invalid timezone in .env: {env_tz}, trying system detection")
     
-    # 2. Try to detect system timezone
+    # 2. Try to detect system timezone (better method)
     try:
-        import time
-        system_tz = time.tzname[0] if time.daylight == 0 else time.tzname[1]
-        return ZoneInfo(system_tz)
-    except Exception:
-        logger.warning("Could not detect system timezone, using UTC")
-        # 3. Fallback to UTC
-        return ZoneInfo("UTC")
+        # Try different methods to get system timezone
+        
+        # Method 1: Use timedatectl on Linux
+        try:
+            result = subprocess.run(['timedatectl', 'show', '--property=Timezone', '--value'], 
+                                  capture_output=True, text=True, timeout=2)
+            if result.returncode == 0 and result.stdout.strip():
+                tz_name = result.stdout.strip()
+                return ZoneInfo(tz_name)
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+            pass
+        
+        # Method 2: Read /etc/timezone on Debian/Ubuntu
+        try:
+            with open('/etc/timezone', 'r') as f:
+                tz_name = f.read().strip()
+                if tz_name:
+                    return ZoneInfo(tz_name)
+        except (FileNotFoundError, PermissionError):
+            pass
+        
+        # Method 3: Parse /etc/localtime symlink
+        try:
+            import pathlib
+            localtime_path = pathlib.Path('/etc/localtime').resolve()
+            if 'zoneinfo' in str(localtime_path):
+                tz_name = str(localtime_path).split('zoneinfo/')[-1]
+                return ZoneInfo(tz_name)
+        except Exception:
+            pass
+        
+        # Method 4: Use system time.tzname (less reliable)
+        try:
+            import time
+            system_tz = time.tzname[0] if time.daylight == 0 else time.tzname[1]
+            # Try to convert common abbreviations to full names
+            tz_mapping = {
+                'PST': 'America/Los_Angeles', 'PDT': 'America/Los_Angeles',
+                'EST': 'America/New_York', 'EDT': 'America/New_York',
+                'CST': 'America/Chicago', 'CDT': 'America/Chicago',
+                'MST': 'America/Denver', 'MDT': 'America/Denver',
+                'UTC': 'UTC', 'GMT': 'UTC'
+            }
+            if system_tz in tz_mapping:
+                return ZoneInfo(tz_mapping[system_tz])
+        except Exception:
+            pass
+            
+    except Exception as e:
+        logger.warning(f"System timezone detection failed: {e}")
+    
+    # 3. Fallback to UTC with clear instruction
+    logger.warning("Could not detect system timezone. Using UTC as fallback.")
+    logger.warning("To set your timezone, add TICKTICK_USER_TIMEZONE=Your/Timezone to your .env file")
+    logger.warning("Examples: TICKTICK_USER_TIMEZONE=America/Los_Angeles (San Francisco)")
+    logger.warning("          TICKTICK_USER_TIMEZONE=Europe/London (London)")
+    logger.warning("          TICKTICK_USER_TIMEZONE=Asia/Bangkok (Bangkok)")
+    
+    return ZoneInfo("UTC")
 
 # Get user timezone
 USER_TIMEZONE = get_user_timezone()
@@ -108,25 +161,7 @@ def validate_datetime_string(date_str: str, field_name: str) -> Optional[str]:
         datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         return None
     except ValueError:
-        return f"Invalid {field_name} format. Use ISO format: YYYY-MM-DDTHH:mm:ss+07:00 or YYYY-MM-DD"
-
-# Rate limiting helper
-def rate_limit(calls_per_second: int = 10):
-    """Simple rate limiting decorator."""
-    last_called = [0.0]
-    min_interval = 1.0 / calls_per_second
-    
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            elapsed = time.time() - last_called[0]
-            left_to_wait = min_interval - elapsed
-            if left_to_wait > 0:
-                time.sleep(left_to_wait)
-            ret = func(*args, **kwargs)
-            last_called[0] = time.time()
-            return ret
-        return wrapper
-    return decorator
+        return f"Invalid {field_name} format. Use ISO format: YYYY-MM-DDTHH:mm:ss with timezone or YYYY-MM-DD"
 
 # Format a task object from TickTick for better display
 def format_task(task: Dict) -> str:
@@ -161,7 +196,7 @@ def format_task(task: Dict) -> str:
     if items:
         formatted += f"\nSubtasks ({len(items)}):\n"
         for i, item in enumerate(items, 1):
-            status = "✓" if item.get('status') == 1 else "✗"
+            status = "✓" if item.get('status') == 1 else "□"
             formatted += f"{i}. [{status}] {item.get('title', 'No title')}\n"
     
     return formatted
@@ -301,14 +336,14 @@ async def create_task(
     priority: int = 0
 ) -> str:
     """
-    Create a new task in TickTick with improved timezone support.
+    Create a new task in TickTick with timezone support.
     
     Args:
         title: Task title
         project_id: ID of the project to add the task to
         content: Task description/content (optional)
-        start_date: Start date in ISO format or 'YYYY-MM-DD' (Bangkok timezone) (optional)
-        due_date: Due date in ISO format or 'YYYY-MM-DD' (Bangkok timezone) (optional)
+        start_date: Start date in ISO format or 'YYYY-MM-DD' (user timezone if no timezone specified) (optional)
+        due_date: Due date in ISO format or 'YYYY-MM-DD' (user timezone if no timezone specified) (optional)
         priority: Priority level (0: None, 1: Low, 3: Medium, 5: High) (optional)
     """
     if not ticktick:
@@ -320,7 +355,7 @@ async def create_task(
         return "Invalid priority. Must be 0 (None), 1 (Low), 3 (Medium), or 5 (High)."
     
     try:
-        # Convert dates to Bangkok timezone if needed
+        # Convert dates to user timezone if needed
         if start_date:
             start_date = normalize_datetime_for_user(start_date)
         if due_date:
@@ -333,7 +368,7 @@ async def create_task(
                     # Try to parse the date to validate it
                     datetime.fromisoformat(date_str.replace("Z", "+00:00"))
                 except ValueError:
-                    return f"Invalid {date_name} format. Use ISO format: YYYY-MM-DDTHH:mm:ss+07:00 or YYYY-MM-DD"
+                    return f"Invalid {date_name} format. Use ISO format: YYYY-MM-DDTHH:mm:ss with timezone or YYYY-MM-DD"
         
         task = ticktick.create_task(
             title=title,
@@ -757,7 +792,7 @@ async def get_overdue_tasks(project_id: str = None) -> str:
             return "Failed to initialize TickTick client. Please check your API credentials."
     
     try:
-        # Get current time in Bangkok timezone
+        # Get current time in user timezone
         now = datetime.now(USER_TIMEZONE)
         
         # Get tasks
@@ -793,7 +828,7 @@ async def get_overdue_tasks(project_id: str = None) -> str:
                     # Parse due date
                     due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
                     
-                    # Convert to Bangkok timezone for comparison
+                    # Convert to user timezone for comparison
                     if due_date.tzinfo is None:
                         due_date = due_date.replace(tzinfo=USER_TIMEZONE)
                     else:
@@ -828,7 +863,7 @@ async def get_overdue_tasks(project_id: str = None) -> str:
 @mcp.tool()
 async def get_today_tasks(project_id: str = None) -> str:
     """
-    Get all tasks due today (Bangkok timezone).
+    Get all tasks due today (user timezone).
     
     Args:
         project_id: Optional project ID to limit scope (default: all projects)
@@ -838,7 +873,7 @@ async def get_today_tasks(project_id: str = None) -> str:
             return "Failed to initialize TickTick client. Please check your API credentials."
     
     try:
-        # Get current date in Bangkok timezone
+        # Get current date in user timezone
         today = datetime.now(USER_TIMEZONE).date()
         
         # Get tasks
@@ -874,7 +909,7 @@ async def get_today_tasks(project_id: str = None) -> str:
                     # Parse due date
                     due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
                     
-                    # Convert to Bangkok timezone
+                    # Convert to user timezone
                     if due_date.tzinfo is None:
                         due_date = due_date.replace(tzinfo=USER_TIMEZONE)
                     else:
@@ -905,7 +940,7 @@ async def get_today_tasks(project_id: str = None) -> str:
 @mcp.tool()
 async def get_upcoming_tasks(days: int = 7, project_id: str = None) -> str:
     """
-    Get all tasks due in the next N days (Bangkok timezone).
+    Get all tasks due in the next N days (user timezone).
     
     Args:
         days: Number of days to look ahead (default: 7)
@@ -922,7 +957,7 @@ async def get_upcoming_tasks(days: int = 7, project_id: str = None) -> str:
         return "Days cannot exceed 365 for performance reasons."
     
     try:
-        # Get current time and future cutoff in Bangkok timezone
+        # Get current time and future cutoff in user timezone
         now = datetime.now(USER_TIMEZONE)
         future_cutoff = now + timedelta(days=days)
         
@@ -959,7 +994,7 @@ async def get_upcoming_tasks(days: int = 7, project_id: str = None) -> str:
                     # Parse due date
                     due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
                     
-                    # Convert to Bangkok timezone
+                    # Convert to user timezone
                     if due_date.tzinfo is None:
                         due_date = due_date.replace(tzinfo=USER_TIMEZONE)
                     else:
@@ -1122,15 +1157,15 @@ async def update_task(
     priority: int = None
 ) -> str:
     """
-    Update an existing task in TickTick with improved timezone support.
+    Update an existing task in TickTick with timezone support.
     
     Args:
         task_id: ID of the task to update
         project_id: ID of the project the task belongs to
         title: New task title (optional)
         content: New task description/content (optional)
-        start_date: New start date in ISO format or 'YYYY-MM-DD' (Bangkok timezone) (optional)
-        due_date: New due date in ISO format or 'YYYY-MM-DD' (Bangkok timezone) (optional)
+        start_date: New start date in ISO format or 'YYYY-MM-DD' (user timezone if no timezone specified) (optional)
+        due_date: New due date in ISO format or 'YYYY-MM-DD' (user timezone if no timezone specified) (optional)
         priority: New priority level (0: None, 1: Low, 3: Medium, 5: High) (optional)
     """
     if not ticktick:
@@ -1142,7 +1177,7 @@ async def update_task(
         return "Invalid priority. Must be 0 (None), 1 (Low), 3 (Medium), or 5 (High)."
     
     try:
-        # Convert dates to Bangkok timezone if needed
+        # Convert dates to user timezone if needed
         if start_date:
             start_date = normalize_datetime_for_user(start_date)
         if due_date:
@@ -1155,7 +1190,7 @@ async def update_task(
                     # Try to parse the date to validate it
                     datetime.fromisoformat(date_str.replace("Z", "+00:00"))
                 except ValueError:
-                    return f"Invalid {date_name} format. Use ISO format: YYYY-MM-DDTHH:mm:ss+07:00 or YYYY-MM-DD"
+                    return f"Invalid {date_name} format. Use ISO format: YYYY-MM-DDTHH:mm:ss with timezone or YYYY-MM-DD"
         
         task = ticktick.update_task(
            task_id=task_id,
