@@ -2,7 +2,8 @@ import asyncio
 import json
 import os
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Dict, List, Any, Optional
 import time
 import re
@@ -22,8 +23,34 @@ mcp = FastMCP("ticktick")
 # Create TickTick client
 ticktick = None
 
-# Bangkok timezone for proper date handling
-BANGKOK_TZ = timezone(timedelta(hours=7))
+import os
+from zoneinfo import ZoneInfo
+
+# User timezone configuration  
+UTC_TIMEZONE = ZoneInfo("UTC")
+
+def get_user_timezone():
+    """Get user timezone from env variable, system, or fallback to UTC."""
+    # 1. Check .env file first
+    env_tz = os.getenv("TICKTICK_USER_TIMEZONE")
+    if env_tz:
+        try:
+            return ZoneInfo(env_tz)
+        except Exception:
+            logger.warning(f"Invalid timezone in .env: {env_tz}, falling back to system timezone")
+    
+    # 2. Try to detect system timezone
+    try:
+        import time
+        system_tz = time.tzname[0] if time.daylight == 0 else time.tzname[1]
+        return ZoneInfo(system_tz)
+    except Exception:
+        logger.warning("Could not detect system timezone, using UTC")
+        # 3. Fallback to UTC
+        return ZoneInfo("UTC")
+
+# Get user timezone
+USER_TIMEZONE = get_user_timezone()
 
 def initialize_client():
     global ticktick
@@ -53,19 +80,20 @@ def initialize_client():
         logger.error(f"Failed to initialize TickTick client: {e}")
         return False
 
-# Helper function to convert date to Bangkok timezone
-def to_bangkok_time(date_str: str) -> str:
-    """Convert date string to Bangkok timezone if no timezone specified."""
+def normalize_datetime_for_user(date_str: str) -> str:
+    """Convert date string to user timezone if no timezone specified."""
     if not date_str:
         return date_str
     
-    # If no timezone info, assume Bangkok time
+    # If no timezone info, assume user timezone
     if not re.search(r'[+-]\d{2}:?\d{2}|Z$', date_str):
-        # Add Bangkok timezone (+07:00)
+        user_offset = datetime.now(USER_TIMEZONE).strftime('%z')
+        formatted_offset = f"{user_offset[:3]}:{user_offset[3:]}"
+        
         if 'T' in date_str:
-            return date_str + '+07:00'
+            return date_str + formatted_offset
         else:
-            return date_str + 'T00:00:00+07:00'
+            return date_str + f'T00:00:00{formatted_offset}'
     
     return date_str
 
@@ -308,9 +336,9 @@ async def create_task(
     try:
         # Convert dates to Bangkok timezone if needed
         if start_date:
-            start_date = to_bangkok_time(start_date)
+            start_date = normalize_datetime_for_user(start_date)
         if due_date:
-            due_date = to_bangkok_time(due_date)
+            due_date = normalize_datetime_for_user(due_date)
             
         # Validate dates if provided
         for date_str, date_name in [(start_date, "start_date"), (due_date, "due_date")]:
@@ -1130,9 +1158,9 @@ async def update_task(
     try:
         # Convert dates to Bangkok timezone if needed
         if start_date:
-            start_date = to_bangkok_time(start_date)
+            start_date = normalize_datetime_for_user(start_date)
         if due_date:
-            due_date = to_bangkok_time(due_date)
+            due_date = normalize_datetime_for_user(due_date)
             
         # Validate dates if provided
         for date_str, date_name in [(start_date, "start_date"), (due_date, "due_date")]:
