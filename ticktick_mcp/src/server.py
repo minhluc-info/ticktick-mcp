@@ -757,7 +757,7 @@ async def get_overdue_tasks(project_id: str = None) -> str:
     
     try:
         # Get current time in Bangkok timezone
-        now = datetime.now(BANGKOK_TZ)
+        now = datetime.now(USER_TIMEZONE)
         
         # Get tasks
         if project_id:
@@ -794,9 +794,9 @@ async def get_overdue_tasks(project_id: str = None) -> str:
                     
                     # Convert to Bangkok timezone for comparison
                     if due_date.tzinfo is None:
-                        due_date = due_date.replace(tzinfo=BANGKOK_TZ)
+                        due_date = due_date.replace(tzinfo=USER_TIMEZONE)
                     else:
-                        due_date = due_date.astimezone(BANGKOK_TZ)
+                        due_date = due_date.astimezone(USER_TIMEZONE)
                     
                     # Check if overdue
                     if due_date < now:
@@ -838,7 +838,7 @@ async def get_today_tasks(project_id: str = None) -> str:
     
     try:
         # Get current date in Bangkok timezone
-        today = datetime.now(BANGKOK_TZ).date()
+        today = datetime.now(USER_TIMEZONE).date()
         
         # Get tasks
         if project_id:
@@ -875,9 +875,9 @@ async def get_today_tasks(project_id: str = None) -> str:
                     
                     # Convert to Bangkok timezone
                     if due_date.tzinfo is None:
-                        due_date = due_date.replace(tzinfo=BANGKOK_TZ)
+                        due_date = due_date.replace(tzinfo=USER_TIMEZONE)
                     else:
-                        due_date = due_date.astimezone(BANGKOK_TZ)
+                        due_date = due_date.astimezone(USER_TIMEZONE)
                     
                     # Check if due today
                     if due_date.date() == today:
@@ -922,7 +922,7 @@ async def get_upcoming_tasks(days: int = 7, project_id: str = None) -> str:
     
     try:
         # Get current time and future cutoff in Bangkok timezone
-        now = datetime.now(BANGKOK_TZ)
+        now = datetime.now(USER_TIMEZONE)
         future_cutoff = now + timedelta(days=days)
         
         # Get tasks
@@ -960,9 +960,9 @@ async def get_upcoming_tasks(days: int = 7, project_id: str = None) -> str:
                     
                     # Convert to Bangkok timezone
                     if due_date.tzinfo is None:
-                        due_date = due_date.replace(tzinfo=BANGKOK_TZ)
+                        due_date = due_date.replace(tzinfo=USER_TIMEZONE)
                     else:
-                        due_date = due_date.astimezone(BANGKOK_TZ)
+                        due_date = due_date.astimezone(USER_TIMEZONE)
                     
                     # Check if due within the specified days
                     if now <= due_date <= future_cutoff:
@@ -1058,7 +1058,7 @@ async def get_project_stats(project_id: str) -> str:
                     priority_counts[priority] += 1
         
         # Overdue count
-        now = datetime.now(BANGKOK_TZ)
+        now = datetime.now(USER_TIMEZONE)
         overdue_count = 0
         for task in tasks:
             if task.get('status') == 2:  # Skip completed
@@ -1068,9 +1068,9 @@ async def get_project_stats(project_id: str) -> str:
                 try:
                     due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
                     if due_date.tzinfo is None:
-                        due_date = due_date.replace(tzinfo=BANGKOK_TZ)
+                        due_date = due_date.replace(tzinfo=USER_TIMEZONE)
                     else:
-                        due_date = due_date.astimezone(BANGKOK_TZ)
+                        due_date = due_date.astimezone(USER_TIMEZONE)
                     if due_date < now:
                         overdue_count += 1
                 except:
