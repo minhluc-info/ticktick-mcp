@@ -137,40 +137,38 @@ def initialize_client():
 def normalize_datetime_for_user(date_str: str) -> str:
     """
     Convert date string to UTC if no timezone specified, treating input as user timezone.
-    
-    Правильная логика:
-    1. Если timezone есть - возвращаем как есть
-    2. Если timezone нет - считаем что это местное время пользователя
-    3. Конвертируем местное время в UTC
-    4. Возвращаем в формате UTC для TickTick API
     """
     if not date_str:
         return date_str
     
     # Если уже есть timezone info, возвращаем как есть
-    if re.search(r'([+-]\d{2}:?\d{2}|Z)$', date_str):
-        return date_str
+    if not re.search(r'([+-]\d{2}:?\d{2}|Z)$', date_str):
+        try:
+            # Парсим как naive datetime (без timezone)
+            if 'T' in date_str:
+                dt_naive = datetime.fromisoformat(date_str)
+            else:
+                # Обрабатываем формат только даты
+                dt_naive = datetime.fromisoformat(date_str + 'T00:00:00')
+            
+            # Считаем что это время в timezone пользователя
+            dt_user_tz = dt_naive.replace(tzinfo=USER_TIMEZONE)
+            
+            # Конвертируем в UTC
+            dt_utc = dt_user_tz.astimezone(UTC_TIMEZONE)
+            
+            # Возвращаем в формате для TickTick API
+            return dt_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            
+        except Exception as e:
+            # Если ошибка - возвращаем оригинальную строку с offset (как fallback)
+            user_offset = datetime.now(USER_TIMEZONE).strftime('%z')
+            if 'T' in date_str:
+                return date_str + user_offset
+            else:
+                return date_str + f'T00:00:00{user_offset}'
     
-    try:
-        # Парсим как naive datetime (без timezone)
-        if 'T' in date_str:
-            dt_naive = datetime.fromisoformat(date_str)
-        else:
-            # Обрабатываем формат только даты: "2025-06-11" -> "2025-06-11T00:00:00"
-            dt_naive = datetime.fromisoformat(date_str + 'T00:00:00')
-        
-        # Считаем что это время в timezone пользователя
-        dt_user_tz = dt_naive.replace(tzinfo=USER_TIMEZONE)
-        
-        # Конвертируем в UTC
-        dt_utc = dt_user_tz.astimezone(UTC_TIMEZONE)
-        
-        # Возвращаем в формате который понимает TickTick API
-        return dt_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-        
-    except ValueError as e:
-        logger.warning(f"Failed to parse datetime '{date_str}': {e}")
-        return date_str
+    return date_str
 
 # Helper functions for datetime validation and normalization
 def validate_datetime_string(date_str: str, field_name: str) -> Optional[str]:
