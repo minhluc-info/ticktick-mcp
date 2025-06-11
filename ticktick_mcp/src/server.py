@@ -920,7 +920,7 @@ async def get_today_tasks(project_id: str = None) -> str:
         logger.error(f"Error in get_today_tasks: {e}")
         return f"Error getting today's tasks: {str(e)}"
 
-# NEW: Get upcoming tasks for the next N days
+# NEW: Оптимизированная функция get_upcoming_tasks
 @mcp.tool()
 async def get_upcoming_tasks(days: int = 7, project_id: str = None) -> str:
     """
@@ -953,17 +953,56 @@ async def get_upcoming_tasks(days: int = 7, project_id: str = None) -> str:
             all_tasks = project_data.get('tasks', [])
             scope = f"project '{project_data.get('project', {}).get('name', project_id)}'"
         else:
-            # Get from all projects
+            # Get from all projects - OPTIMIZED VERSION
             projects = ticktick.get_projects()
             if 'error' in projects:
                 return f"Error fetching projects: {projects['error']}"
             
+            # 🚀 OPTIMIZATION 1: Filter only active (non-closed) projects
+            active_projects = [p for p in projects if not p.get('closed', False)]
+            original_count = len(projects)
+            active_count = len(active_projects)
+            
+            logger.info(f"Found {original_count} total projects, {active_count} active projects")
+            
+            # 🚀 OPTIMIZATION 2: Limit quantity for performance (configurable)
+            PROJECT_LIMIT = int(os.getenv('TICKTICK_PROJECT_LIMIT', '20'))
+            
+            if len(active_projects) > PROJECT_LIMIT:
+                logger.info(f"Limiting search to first {PROJECT_LIMIT} active projects out of {active_count} total active projects")
+                limited_projects = active_projects[:PROJECT_LIMIT]
+                scope = f"{PROJECT_LIMIT} active projects (limited for performance, {active_count - PROJECT_LIMIT} projects skipped)"
+            else:
+                limited_projects = active_projects
+                scope = f"{len(limited_projects)} active projects"
+            
+            # 🚀 OPTIMIZATION 3: Improved error handling with partial results
             all_tasks = []
-            for project in projects:
-                project_data = ticktick.get_project_with_data(project['id'])
-                if 'error' not in project_data:
-                    all_tasks.extend(project_data.get('tasks', []))
-            scope = "all projects"
+            failed_projects = 0
+            successful_projects = 0
+            
+            logger.info(f"Processing {len(limited_projects)} projects...")
+            
+            for i, project in enumerate(limited_projects, 1):
+                try:
+                    logger.debug(f"Processing project {i}/{len(limited_projects)}: {project.get('name', 'Unknown')}")
+                    project_data = ticktick.get_project_with_data(project['id'])
+                    
+                    if 'error' not in project_data:
+                        project_tasks = project_data.get('tasks', [])
+                        all_tasks.extend(project_tasks)
+                        successful_projects += 1
+                        logger.debug(f"✅ Project '{project.get('name')}': {len(project_tasks)} tasks")
+                    else:
+                        failed_projects += 1
+                        logger.warning(f"❌ Project '{project.get('name')}' returned error: {project_data['error']}")
+                        
+                except Exception as e:
+                    failed_projects += 1
+                    logger.warning(f"❌ Failed to fetch project '{project.get('name', project['id'])}': {str(e)}")
+                    continue
+            
+            logger.info(f"Completed processing: {successful_projects} successful, {failed_projects} failed")
         
         # Find upcoming tasks
         upcoming_tasks = []
@@ -994,10 +1033,22 @@ async def get_upcoming_tasks(days: int = 7, project_id: str = None) -> str:
         # Sort by due date (earliest first)
         upcoming_tasks.sort(key=lambda x: x[1])
         
-        if not upcoming_tasks:
-            return f"📅 No upcoming tasks found in the next {days} day{'s' if days != 1 else ''} in {scope}."
+        # 🚀 OPTIMIZATION 4: Enhanced result reporting
+        result = f"📅 Found {len(upcoming_tasks)} tasks due in the next {days} day{'s' if days != 1 else ''} in {scope}"
         
-        result = f"📅 Found {len(upcoming_tasks)} tasks due in the next {days} day{'s' if days != 1 else ''} in {scope}:\n\n"
+        # Add performance statistics
+        if not project_id:
+            result += f"\n📊 Performance stats: {successful_projects} projects processed"
+            if failed_projects > 0:
+                result += f", {failed_projects} projects skipped due to errors"
+            if len(active_projects) > PROJECT_LIMIT:
+                result += f"\n⚠️ Note: Limited to {PROJECT_LIMIT} projects for performance. Set TICKTICK_PROJECT_LIMIT in .env to change this limit."
+        
+        if not upcoming_tasks:
+            result += "."
+            return result
+        
+        result += ":\n\n"
         
         # Group by date for better readability
         current_date = None
@@ -1039,96 +1090,6 @@ async def get_upcoming_tasks(days: int = 7, project_id: str = None) -> str:
     except Exception as e:
         logger.error(f"Error in get_upcoming_tasks: {e}")
         return f"Error getting upcoming tasks: {str(e)}"
-
-# NEW: Get project statistics
-@mcp.tool() 
-async def get_project_stats(project_id: str) -> str:
-    """
-    Get detailed statistics for a project.
-    
-    Args:
-        project_id: ID of the project to analyze
-    """
-    if not ticktick:
-        if not initialize_client():
-            return "Failed to initialize TickTick client. Please check your API credentials."
-    
-    try:
-        project_data = ticktick.get_project_with_data(project_id)
-        if 'error' in project_data:
-            return f"Error fetching project: {project_data['error']}"
-        
-        project = project_data.get('project', {})
-        tasks = project_data.get('tasks', [])
-        
-        if not tasks:
-            return f"📊 Project '{project.get('name', project_id)}' has no tasks."
-        
-        # Calculate statistics
-        total_tasks = len(tasks)
-        completed_tasks = len([t for t in tasks if t.get('status') == 2])
-        active_tasks = total_tasks - completed_tasks
-        
-        # Priority breakdown
-        priority_counts = {0: 0, 1: 0, 3: 0, 5: 0}  # None, Low, Medium, High
-        for task in tasks:
-            if task.get('status') != 2:  # Only active tasks
-                priority = task.get('priority', 0)
-                if priority in priority_counts:
-                    priority_counts[priority] += 1
-        
-        # Overdue count
-        now = datetime.now(USER_TIMEZONE)
-        overdue_count = 0
-        for task in tasks:
-            if task.get('status') == 2:  # Skip completed
-                continue
-            due_date_str = task.get('dueDate')
-            if due_date_str:
-                try:
-                    due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
-                    if due_date.tzinfo is None:
-                        due_date = due_date.replace(tzinfo=USER_TIMEZONE)
-                    else:
-                        due_date = due_date.astimezone(USER_TIMEZONE)
-                    if due_date < now:
-                        overdue_count += 1
-                except:
-                    continue
-        
-        # Completion rate
-        completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
-        
-        # Format results
-        result = f"📊 Statistics for project '{project.get('name', project_id)}':\n\n"
-        result += f"📈 **Overall Progress:**\n"
-        result += f"   Total tasks: {total_tasks}\n"
-        result += f"   Completed: {completed_tasks} ({completion_rate:.1f}%)\n"
-        result += f"   Active: {active_tasks}\n"
-        result += f"   Overdue: {overdue_count}\n\n"
-        
-        result += f"🎯 **Active Tasks by Priority:**\n"
-        result += f"   🔴 High (5): {priority_counts[5]}\n"
-        result += f"   🟡 Medium (3): {priority_counts[3]}\n"
-        result += f"   🔵 Low (1): {priority_counts[1]}\n"
-        result += f"   ⚪ None (0): {priority_counts[0]}\n\n"
-        
-        # Recommendations
-        if overdue_count > 0:
-            result += f"⚠️ **Recommendations:**\n"
-            result += f"   - You have {overdue_count} overdue tasks. Consider reviewing deadlines.\n"
-        
-        if priority_counts[5] > 5:
-            result += f"   - {priority_counts[5]} high-priority tasks. Focus on these first.\n"
-        
-        if completion_rate < 50:
-            result += f"   - Low completion rate ({completion_rate:.1f}%). Consider breaking down large tasks.\n"
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error in get_project_stats: {e}")
-        return f"Error getting project statistics: {str(e)}"
 
 @mcp.tool()
 async def update_task(
