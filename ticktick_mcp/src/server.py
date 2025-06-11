@@ -467,31 +467,16 @@ async def create_multiple_tasks(tasks: List[Dict]) -> str:
                 continue
             
             # Validate and normalize dates if provided
+            # Normalize dates if provided (validation происходит внутри normalize_datetime_for_user)
             normalized_start_date = None
             normalized_due_date = None
-            
+
             if start_date:
-                validation_error = validate_datetime_string(start_date, "start_date")
-                if validation_error:
-                    failed_tasks.append({
-                        'index': i,
-                        'title': title,
-                        'error': validation_error
-                    })
-                    continue
                 normalized_start_date = normalize_datetime_for_user(start_date)
-            
+                
             if due_date:
-                validation_error = validate_datetime_string(due_date, "due_date")
-                if validation_error:
-                    failed_tasks.append({
-                        'index': i,
-                        'title': title,
-                        'error': validation_error
-                    })
-                    continue
                 normalized_due_date = normalize_datetime_for_user(due_date)
-            
+        
             # Create the task
             task = ticktick.create_task(
                 title=title,
