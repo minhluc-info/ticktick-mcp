@@ -140,14 +140,13 @@ def normalize_datetime_for_user(date_str: str) -> str:
         return date_str
     
     # If no timezone info, assume user timezone
-    if not re.search(r'[+-]\d{2}:?\d{2}|Z$', date_str):
+    if not re.search(r'([+-]\d{2}:?\d{2}|Z)$', date_str):
         user_offset = datetime.now(USER_TIMEZONE).strftime('%z')
-        formatted_offset = f"{user_offset[:3]}:{user_offset[3:]}"
-        
+
         if 'T' in date_str:
-            return date_str + formatted_offset
+            return date_str + user_offset
         else:
-            return date_str + f'T00:00:00{formatted_offset}'
+            return date_str + f'T00:00:00{user_offset}'
     
     return date_str
 
