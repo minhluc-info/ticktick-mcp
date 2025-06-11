@@ -235,10 +235,8 @@ class TickTickClient:
         # 🔍 DEBUG: Log incoming parameters
         print(f"🔍 create_task INPUT:")
         print(f"  title: '{title}'")
-        print(f"  project_id: '{project_id}'")
         print(f"  start_date: '{start_date}'")
         print(f"  due_date: '{due_date}'")
-        print(f"  priority: {priority}")
         
         data = {
             "title": title,
@@ -247,40 +245,32 @@ class TickTickClient:
         
         if content:
             data["content"] = content
-            print(f"  ✅ Added content: '{content}'")
+            print(f"  ✅ Added content")
             
         if start_date:
             data["startDate"] = start_date
             print(f"  ✅ Added startDate: '{start_date}'")
-        else:
-            print(f"  ❌ start_date is empty, NOT adding to data")
             
         if due_date:
             data["dueDate"] = due_date
             print(f"  ✅ Added dueDate: '{due_date}'")
-        else:
-            print(f"  ❌ due_date is empty, NOT adding to data")
             
         if priority is not None:
             data["priority"] = priority
-            print(f"  ✅ Added priority: {priority}")
             
         if is_all_day is not None:
             data["isAllDay"] = is_all_day
-            print(f"  ✅ Added isAllDay: {is_all_day}")
         
-        # 🔍 DEBUG: Log final payload
-        print(f"🔍 Final data for API:")
-        print(f"  {data}")
+        # Add timezone if dates are provided (required by TickTick API)
+        if start_date or due_date:
+            data["timeZone"] = "UTC"
+            print(f"  ✅ Added timeZone: UTC")
         
-        # 🔍 DEBUG: Log API request
-        print(f"🔍 Sending POST /task with data: {data}")
+        print(f"🔍 Final API payload: {data}")
         
         result = self._make_request("POST", "/task", data)
         
-        # 🔍 DEBUG: Log API response
-        print(f"🔍 API Response:")
-        print(f"  {result}")
+        print(f"🔍 API Response: {result}")
         
         return result
     
