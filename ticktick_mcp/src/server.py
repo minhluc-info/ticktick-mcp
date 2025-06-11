@@ -138,51 +138,51 @@ def normalize_datetime_for_user(date_str: str) -> str:
     """
     Convert date string to UTC if no timezone specified, treating input as user timezone.
     """
-    print(f"🔍 normalize_datetime_for_user ВХОД: '{date_str}'")
+    print(f"DEBUG normalize_datetime_for_user INPUT: '{date_str}'")
     
     if not date_str:
-        print(f"🔍 normalize_datetime_for_user ВЫХОД (пустая строка): '{date_str}'")
+        print(f"DEBUG normalize_datetime_for_user OUTPUT (empty): '{date_str}'")
         return date_str
     
     # Если уже есть timezone info, возвращаем как есть
     if not re.search(r'([+-]\d{2}:?\d{2}|Z)$', date_str):
-        print(f"🔍 Timezone НЕ найден в '{date_str}', начинаем конвертацию...")
+        print(f"DEBUG Timezone NOT found in '{date_str}', starting conversion...")
         try:
             # Парсим как naive datetime (без timezone)
             if 'T' in date_str:
                 dt_naive = datetime.fromisoformat(date_str)
-                print(f"🔍 Распарсили naive datetime: {dt_naive}")
+                print(f"DEBUG Parsed naive datetime: {dt_naive}")
             else:
                 # Обрабатываем формат только даты
                 dt_naive = datetime.fromisoformat(date_str + 'T00:00:00')
-                print(f"🔍 Добавили время к дате: {dt_naive}")
+                print(f"DEBUG Added time to date: {dt_naive}")
             
             # Считаем что это время в timezone пользователя
             dt_user_tz = dt_naive.replace(tzinfo=USER_TIMEZONE)
-            print(f"🔍 Добавили USER_TIMEZONE: {dt_user_tz}")
+            print(f"DEBUG Added USER_TIMEZONE: {dt_user_tz}")
             
             # Конвертируем в UTC
             dt_utc = dt_user_tz.astimezone(UTC_TIMEZONE)
-            print(f"🔍 Конвертировали в UTC: {dt_utc}")
+            print(f"DEBUG Converted to UTC: {dt_utc}")
             
             # Возвращаем в формате для TickTick API
             result = dt_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-            print(f"🔍 normalize_datetime_for_user ВЫХОД (UTC): '{result}'")
+            print(f"DEBUG normalize_datetime_for_user OUTPUT (UTC): '{result}'")
             return result
             
         except Exception as e:
-            print(f"🚨 ОШИБКА в normalize_datetime_for_user: {e}")
+            print(f"ERROR in normalize_datetime_for_user: {e}")
             # Если ошибка - возвращаем оригинальную строку с offset (как fallback)
             user_offset = datetime.now(USER_TIMEZONE).strftime('%z')
             if 'T' in date_str:
                 result = date_str + user_offset
             else:
                 result = date_str + f'T00:00:00{user_offset}'
-            print(f"🔍 normalize_datetime_for_user ВЫХОД (fallback): '{result}'")
+            print(f"DEBUG normalize_datetime_for_user OUTPUT (fallback): '{result}'")
             return result
     else:
-        print(f"🔍 Timezone найден в '{date_str}', возвращаем как есть")
-        print(f"🔍 normalize_datetime_for_user ВЫХОД (без изменений): '{date_str}'")
+        print(f"DEBUG Timezone found in '{date_str}', returning as-is")
+        print(f"DEBUG normalize_datetime_for_user OUTPUT (unchanged): '{date_str}'")
         return date_str
         
 # Helper functions for datetime validation and normalization
