@@ -135,47 +135,19 @@ def initialize_client():
         return False
 
 def normalize_datetime_for_user(date_str: str) -> str:
-    """
-    Convert date string to UTC if no timezone specified, treating input as user timezone.
-    
-    Logic:
-    1. If timezone exists - return as is
-    2. If no timezone - treat as user local time
-    3. Convert local time to UTC
-    4. Return in UTC format for TickTick API
-    
-    Examples:
-    - Input: "2025-06-11T19:00:00" (Bangkok local time)
-    - Output: "2025-06-11T12:00:00.000Z" (UTC time)
-    """
+    """Convert date string to user timezone format if no timezone specified."""
     if not date_str:
         return date_str
     
-    # If timezone info already exists, return as is
-    if re.search(r'([+-]\d{2}:?\d{2}|Z), date_str):
-        return date_str
-    
-    try:
-        # Parse as naive datetime (no timezone)
+    # If no timezone info, assume user timezone and add offset
+    if not re.search(r'([+-]\d{2}:?\d{2}|Z)$', date_str):
+        user_offset = datetime.now(USER_TIMEZONE).strftime('%z')
         if 'T' in date_str:
-            dt_naive = datetime.fromisoformat(date_str)
+            return date_str + user_offset
         else:
-            # Handle date-only format: "2025-06-11" -> "2025-06-11T00:00:00"
-            dt_naive = datetime.fromisoformat(date_str + 'T00:00:00')
-        
-        # Treat as time in user timezone
-        dt_user_tz = dt_naive.replace(tzinfo=USER_TIMEZONE)
-        
-        # Convert to UTC
-        dt_utc = dt_user_tz.astimezone(UTC_TIMEZONE)
-        
-        # Return in format that TickTick API understands
-        return dt_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-        
-    except ValueError as e:
-        logger.warning(f"Failed to parse datetime '{date_str}': {e}")
-        return date_str
-
+            return date_str + f'T00:00:00{user_offset}'
+    
+    return date_str
 # NOTE: Make sure UTC_TIMEZONE is defined at the top of the file:
 # UTC_TIMEZONE = ZoneInfo("UTC")
 
