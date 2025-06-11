@@ -138,38 +138,53 @@ def normalize_datetime_for_user(date_str: str) -> str:
     """
     Convert date string to UTC if no timezone specified, treating input as user timezone.
     """
+    print(f"🔍 normalize_datetime_for_user ВХОД: '{date_str}'")
+    
     if not date_str:
+        print(f"🔍 normalize_datetime_for_user ВЫХОД (пустая строка): '{date_str}'")
         return date_str
     
     # Если уже есть timezone info, возвращаем как есть
     if not re.search(r'([+-]\d{2}:?\d{2}|Z)$', date_str):
+        print(f"🔍 Timezone НЕ найден в '{date_str}', начинаем конвертацию...")
         try:
             # Парсим как naive datetime (без timezone)
             if 'T' in date_str:
                 dt_naive = datetime.fromisoformat(date_str)
+                print(f"🔍 Распарсили naive datetime: {dt_naive}")
             else:
                 # Обрабатываем формат только даты
                 dt_naive = datetime.fromisoformat(date_str + 'T00:00:00')
+                print(f"🔍 Добавили время к дате: {dt_naive}")
             
             # Считаем что это время в timezone пользователя
             dt_user_tz = dt_naive.replace(tzinfo=USER_TIMEZONE)
+            print(f"🔍 Добавили USER_TIMEZONE: {dt_user_tz}")
             
             # Конвертируем в UTC
             dt_utc = dt_user_tz.astimezone(UTC_TIMEZONE)
+            print(f"🔍 Конвертировали в UTC: {dt_utc}")
             
             # Возвращаем в формате для TickTick API
-            return dt_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            result = dt_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            print(f"🔍 normalize_datetime_for_user ВЫХОД (UTC): '{result}'")
+            return result
             
         except Exception as e:
+            print(f"🚨 ОШИБКА в normalize_datetime_for_user: {e}")
             # Если ошибка - возвращаем оригинальную строку с offset (как fallback)
             user_offset = datetime.now(USER_TIMEZONE).strftime('%z')
             if 'T' in date_str:
-                return date_str + user_offset
+                result = date_str + user_offset
             else:
-                return date_str + f'T00:00:00{user_offset}'
-    
-    return date_str
-
+                result = date_str + f'T00:00:00{user_offset}'
+            print(f"🔍 normalize_datetime_for_user ВЫХОД (fallback): '{result}'")
+            return result
+    else:
+        print(f"🔍 Timezone найден в '{date_str}', возвращаем как есть")
+        print(f"🔍 normalize_datetime_for_user ВЫХОД (без изменений): '{date_str}'")
+        return date_str
+        
 # Helper functions for datetime validation and normalization
 def validate_datetime_string(date_str: str, field_name: str) -> Optional[str]:
     """Validate datetime string format."""
