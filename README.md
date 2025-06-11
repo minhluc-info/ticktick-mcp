@@ -332,7 +332,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-**Made with ❤️ by [Jaesung Park](https://github.com/parkjs814) & [Ilya P.](https://github.com/RaiconY)**
+**Made with ❤️ by [Jaesung Park](https://github.com/parkjs814) & [Ilya P](https://github.com/RaiconY)**
 
 [⭐ Star this repo](https://github.com/jacepark12/ticktick-mcp) | [🐛 Report Bug](https://github.com/jacepark12/ticktick-mcp/issues) | [💡 Request Feature](https://github.com/jacepark12/ticktick-mcp/issues)
 
