@@ -232,11 +232,13 @@ class TickTickClient:
                priority: int = 0, is_all_day: bool = False) -> Dict:
         """Creates a new task."""
         
-        # 🔍 DEBUG: Log incoming parameters
-        print(f"🔍 create_task INPUT:")
+        # DEBUG: Log incoming parameters
+        print(f"DEBUG create_task INPUT:")
         print(f"  title: '{title}'")
+        print(f"  project_id: '{project_id}'")
         print(f"  start_date: '{start_date}'")
         print(f"  due_date: '{due_date}'")
+        print(f"  priority: {priority}")
         
         data = {
             "title": title,
@@ -245,32 +247,45 @@ class TickTickClient:
         
         if content:
             data["content"] = content
-            print(f"  ✅ Added content")
+            print(f"  [OK] Added content: '{content}'")
             
         if start_date:
             data["startDate"] = start_date
-            print(f"  ✅ Added startDate: '{start_date}'")
+            print(f"  [OK] Added startDate: '{start_date}'")
+        else:
+            print(f"  [SKIP] start_date is empty, NOT adding to data")
             
         if due_date:
             data["dueDate"] = due_date
-            print(f"  ✅ Added dueDate: '{due_date}'")
+            print(f"  [OK] Added dueDate: '{due_date}'")
+        else:
+            print(f"  [SKIP] due_date is empty, NOT adding to data")
             
         if priority is not None:
             data["priority"] = priority
+            print(f"  [OK] Added priority: {priority}")
             
         if is_all_day is not None:
             data["isAllDay"] = is_all_day
+            print(f"  [OK] Added isAllDay: {is_all_day}")
         
         # Add timezone if dates are provided (required by TickTick API)
         if start_date or due_date:
             data["timeZone"] = "UTC"
-            print(f"  ✅ Added timeZone: UTC")
+            print(f"  [OK] Added timeZone: UTC")
         
-        print(f"🔍 Final API payload: {data}")
+        # DEBUG: Log final payload
+        print(f"DEBUG Final data for API:")
+        print(f"  {data}")
+        
+        # DEBUG: Log API request
+        print(f"DEBUG Sending POST /task with data: {data}")
         
         result = self._make_request("POST", "/task", data)
         
-        print(f"🔍 API Response: {result}")
+        # DEBUG: Log API response
+        print(f"DEBUG API Response:")
+        print(f"  {result}")
         
         return result
     
