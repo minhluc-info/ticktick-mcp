@@ -4,9 +4,12 @@ services:
     build: .
     ports:
       - "3434:3434"
-    volumes:
-      - ./.env:/app/.env
     restart: unless-stopped
+    environment:
+      - TICKTICK_CLIENT_ID=${TICKTICK_CLIENT_ID}
+      - TICKTICK_CLIENT_SECRET=${TICKTICK_CLIENT_SECRET}
+      - TICKTICK_ACCESS_TOKEN=${TICKTICK_ACCESS_TOKEN}
+      - TICKTICK_REFRESH_TOKEN=${TICKTICK_REFRESH_TOKEN}
     # Default command is already defined in Dockerfile
     # Uncomment to override:
     # command: uv run -m ticktick_mcp.cli run --transport sse --host 0.0.0.0 --port 3434

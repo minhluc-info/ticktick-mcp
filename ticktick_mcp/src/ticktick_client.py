@@ -10,8 +10,6 @@ from typing import Dict, List, Any, Optional, Tuple
 
 # Set up detailed logging for the client
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
 # Add a handler that prints to stdout
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.DEBUG)
